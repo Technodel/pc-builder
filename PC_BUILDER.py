@@ -6,30 +6,29 @@ import glob
 # --- 1. UI SETTINGS ---
 st.set_page_config(page_title="Technodel PC Builder 🖥️", layout="wide")
 
-# --- 2. DATA LOADING (The "Perfect" Logic) ---
+# --- 2. THE WORKING DATA LOADER ---
 def get_data():
     try:
-        # Scan GitHub folder for any Excel file
+        # 1. Finds any .xlsx or .xlsm file in your GitHub folder
         excel_files = glob.glob("*.xlsx") + glob.glob("*.xlsm")
         
         if not excel_files:
-            st.error("⚠️ No Excel file found in GitHub! Please upload your .xlsx or .xlsm file.")
+            st.error("⚠️ No Excel file found! Please upload your file to GitHub.")
             return None
             
-        # Select the first file found
         target_file = excel_files[0]
         
-        # Load the very first tab (index 0)
+        # 2. Points the builder to the first sheet (index 0)
         df = pd.read_excel(target_file, sheet_name=0)
         
-        # We skip the first 2 rows to start at Row 4 [2026-02-16]
+        # 3. Skips the first 2 rows to start the data at Row 4 [2026-02-16]
         df = df.iloc[2:].copy()
         
-        # Clean: Remove empty rows in the Name column (Column B)
+        # 4. Removes empty rows based on the Name column (Column B)
         df = df.dropna(subset=[df.columns[1]]) 
         return df
     except Exception as e:
-        st.error(f"❌ Error reading file: {e}")
+        st.error(f"❌ Error: {e}")
         return None
 
 # --- 3. MAIN INTERFACE ---
@@ -39,10 +38,10 @@ st.title("Technodel PC Builder")
 df = get_data()
 
 if df is not None:
-    # URL Sharing logic for technodel-builder.streamlit.app [2026-02-19]
+    # Logic for auto-filling parts from a shared link [2026-02-19]
     params = st.query_params
     
-    # Categories based on your Excel structure
+    # Categories matching your Column A
     categories = ["CPU", "GPU", "RAM", "Motherboard", "Storage", "PSU", "Case"]
     build = {}
     total_price = 0
@@ -51,7 +50,7 @@ if df is not None:
     
     for i, cat in enumerate(categories):
         with cols[i % 3]:
-            # Filter Column A (index 0) for category name
+            # Filter Column A (Index 0) for the category name
             cat_df = df[df.iloc[:, 0].astype(str).str.contains(cat, case=False, na=False)]
             
             options = []
@@ -66,7 +65,7 @@ if df is not None:
                     continue
             
             if options:
-                # Share Build auto-selection logic
+                # Handle auto-selection from URL params
                 default_idx = 0
                 if cat in params:
                     for idx, opt in enumerate(options):
@@ -87,7 +86,8 @@ if df is not None:
     st.divider()
     st.header(f"Total Price: ${total_price}")
 
-    # --- 4. SHARE BUILD LINK ---
+    # --- 4. THE SHARE LINK ---
+    # Points to your deployed URL
     base_url = "https://technodel-builder.streamlit.app/?"
     query_string = urllib.parse.urlencode({k: v['name'] for k, v in build.items()})
     
