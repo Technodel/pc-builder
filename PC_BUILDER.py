@@ -2,47 +2,9 @@ import streamlit as st
 import pandas as pd
 import requests
 from io import BytesIO
+import re
 
-# --- 1. PAGE CONFIG & BRANDING ---
-st.set_page_config(page_title="Technodel PC Builder", layout="wide", page_icon="🖥️")
-
-# Custom CSS for Professional Look
-st.markdown("""
-    <style>
-    .main { background-color: #f5f7f9; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    .social-icon { width: 25px; margin-right: 10px; vertical-align: middle; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# Logo and Header
-col_l, col_r = st.columns([1, 3])
-with col_l:
-    st.image("https://technodel.net/wp-content/uploads/2024/08/technodel-site-logo-01.webp", width=250)
-with col_r:
-    st.title("Technodel Pro PC Builder")
-    st.info("✅ 1 Year warranty on all parts | 🚀 Ready for pickup within 24 hours")
-
-# --- 2. SIDEBAR (CONTACT & SOCIALS) ---
-with st.sidebar:
-    st.header("📞 Contact Information")
-    st.write("03 659872 | 70 449900")
-    st.write("71 234002 | 07 345689")
-    st.write("📧 Adarwich@engineer.com")
-    st.write("🌐 [Technodel.net](https://technodel.net)")
-    
-    st.divider()
-    st.header("📱 Our Social Media")
-    
-    # Social Media with Manual "Logos" (Unicode/Markdown)
-    st.markdown("🔵 [**Facebook**](https://fb.com/technodel)")
-    st.markdown("📸 [**Instagram**](https://instagram.com/technodel_computers)")
-    st.markdown("🎵 [**TikTok**](https://tiktok.com/@technodel_computer) *(Exclusive Deals!)*")
-    
-    st.divider()
-    st.caption("© 2026 Technodel Computers")
-
-# --- 3. DATA & MULTI-COLUMN PARSING ---
+# --- 1. DATA LOADER ---
 @st.cache_data(ttl=600)
 def load_all_data():
     SHEET_ID = "1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4"
@@ -50,13 +12,19 @@ def load_all_data():
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={HARDWARE_GID}"
     try:
         response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-        if response.status_code == 200:
-            return pd.read_csv(BytesIO(response.content), header=None)
-        return pd.DataFrame()
+        return pd.read_csv(BytesIO(response.content), header=None) if response.status_code == 200 else pd.DataFrame()
     except: return pd.DataFrame()
 
+# --- 2. TECHNODEL LOGIC: GENERATION GRABBER ---
+def get_intel_gen(name):
+    """Logic: 4 digits (e.g. 6500) = 1st digit. 5 digits (e.g. 12700) = first 2 digits."""
+    match = re.search(r'i\d-(\d{4,5})', name, re.I)
+    if match:
+        digits = match.group(1)
+        return int(digits[:2]) if len(digits) == 5 else int(digits[0])
+    return None
+
 def find_component_data(df, title):
-    # Scans all columns (A, D, G, J) for the title
     for col in df.columns:
         match = df[df[col].astype(str).str.contains(title, case=False, na=False)]
         if not match.empty:
@@ -64,65 +32,49 @@ def find_component_data(df, title):
             data = []
             for i in range(start_row, len(df)):
                 name = str(df.iloc[i, col]).strip()
-                if not name or name == "nan" or any(t in name.upper() for t in ["PRICE", "PROCESSOR"]):
+                if not name or name == "nan" or "PRICE" in name.upper():
                     if len(data) > 0: break
                     continue
                 try:
-                    price_raw = str(df.iloc[i, col + 1]).replace('$', '').replace(',', '').strip()
-                    price = int(round(float(price_raw), 0))
-                    data.append({"ITEM": name, "PRICE": price})
+                    price = int(round(float(str(df.iloc[i, col + 1]).replace('$', '').replace(',', '')), 0))
+                    data.append({"ITEM": name, "PRICE": price, "GEN": get_intel_gen(name)})
                 except: continue
             return pd.DataFrame(data)
     return pd.DataFrame()
 
-# --- 4. THE BUILDER ---
+# --- 3. UI EXECUTION ---
 raw_df = load_all_data()
-
 if not raw_df.empty:
-    cats = {
-        "CPU": "PROCESSORS", "MB": "MOTHER BOARDS", "STORAGE": "INTERNAL STORAGE",
-        "COOLER": "CPU COOLERS", "CASE": "CASES", "RAM": "RAMS", 
-        "PSU": "POWER SUPPLIES", "GPU": "GRAPHICS CARDS", "UPS": "UPS"
-    }
-    
+    cats = {"CPU": "PROCESSORS", "MB": "MOTHER BOARDS", "RAM": "RAMS", "ST": "INTERNAL STORAGE", "GPU": "GRAPHICS CARDS", "PSU": "POWER SUPPLIES", "CASE": "CASES", "UPS": "UPS"}
     dfs = {k: find_component_data(raw_df, v) for k, v in cats.items()}
-    choices = {}
     
-    # Grid Layout for Components
-    st.subheader("🛠️ Select Your Components")
-    c1, c2, c3 = st.columns(3)
+    st.title("Technodel Smart Builder")
     
-    # Distribute components across 3 columns
-    for i, (key, title) in enumerate(cats.items()):
-        target_col = [c1, c2, c3][i % 3]
-        with target_col:
-            if not dfs[key].empty:
-                items = ["Select " + title] + dfs[key]['ITEM'].tolist()
-                sel = st.selectbox(f"{title}", items, key=key)
-                if "Select" not in sel:
-                    price = dfs[key][dfs[key]['ITEM'] == sel]['PRICE'].values[0]
-                    choices[key] = {"name": sel, "price": price}
+    # Selection logic
+    col1, col2 = st.columns(2)
+    with col1:
+        cpu_sel = st.selectbox("Processor", ["Select"] + dfs['CPU']['ITEM'].tolist())
+        cpu_gen = dfs['CPU'][dfs['CPU']['ITEM'] == cpu_sel]['GEN'].values[0] if cpu_sel != "Select" else None
+        if cpu_gen: st.success(f"Detected: {cpu_gen}th Generation")
 
-    # --- 5. BUILD SUMMARY & QUOTE ---
-    if choices:
-        st.divider()
-        st.subheader("📊 Your PC Build Summary")
+        mb_sel = st.selectbox("Motherboard", ["Select"] + dfs['MB']['ITEM'].tolist())
+        # COMPATIBILITY CHECK: Look for gen in motherboard parenthesis (e.g. "H610 (12,13)")
+        if mb_sel != "Select" and cpu_gen:
+            compat_match = re.search(r'\((.*?)\)', mb_sel)
+            if compat_match:
+                allowed = [g.strip() for g in compat_match.group(1).split(',')]
+                if str(cpu_gen) not in allowed:
+                    st.error(f"⚠️ Incompatible! Board supports generations: {', '.join(allowed)}")
+
+    with col2:
+        # EXPANDABLE RAM & STORAGE (UP TO 4)
+        r_qty = st.number_input("RAM Quantity", 1, 4, 1)
+        r_model = st.selectbox("RAM Type", ["Select"] + dfs['RAM']['ITEM'].tolist())
         
-        summary_list = []
-        for k, v in choices.items():
-            summary_list.append({"Component": k, "Description": v['name'], "Price": f"${v['price']:,}"})
-        
-        st.table(pd.DataFrame(summary_list))
-        
-        total = sum(item['price'] for item in choices.values())
-        st.metric("Estimated Total", f"${total:,}")
-        
-        # Download Logic
-        quote_text = f"TECHNODEL PC QUOTE\nWarranty: 1 Year\nReady within 24h\n\n"
-        for k, v in choices.items():
-            quote_text += f"{k}: {v['name']} (${v['price']})\n"
-        quote_text += f"\nTOTAL: ${total:,}\n\nContact: 03 659872"
-        
-        st.download_button("💾 Download Quotation", quote_text, "Technodel_Quote.txt")
-else:
-    st.error("Failed to sync with Google Sheets. Please check your data source.")
+        s_qty = st.number_input("Storage Quantity", 1, 4, 1)
+        s_model = st.selectbox("Storage Model", ["Select"] + dfs['ST']['ITEM'].tolist())
+
+    # --- FOOTER & CONTACTS ---
+    st.divider()
+    st.write("📞 03 659872 | 70 449900 | 71 234002 | 07 345689")
+    st.write("🌐 [Technodel.net](https://Technodel.net) | [Instagram](https://instagram.com/technodel_computers)")
