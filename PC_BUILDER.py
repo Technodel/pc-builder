@@ -24,7 +24,7 @@ def is_compat(cpu_sel, mb_name):
         return str(gen) in allowed
     return True
 
-# --- 3. DATA GRABBER (FIXED FOR NESTED DDR TABLES) ---
+# --- 3. THE DATA GRABBER (LOCKED TO COLUMNS) ---
 @st.cache_data(ttl=300)
 def load_all_data():
     SHEET_ID = "1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4"
@@ -35,67 +35,53 @@ def load_all_data():
         return pd.read_csv(BytesIO(res.content), header=None)
     except: return pd.DataFrame()
 
-def find_ram_by_tech(df, tech_type):
-    """Finds the 'RAMS' column, then looks for the sub-header (DDR3/4/5)."""
-    # 1. Find the column that contains 'RAMS'
-    mask = df.apply(lambda s: s.astype(str).str.strip().str.upper() == "RAMS")
-    matches = mask.stack()
-    if matches.empty: return pd.DataFrame()
-    
-    row_idx, col_idx = matches.index[0]
+def get_data_from_col(df, col_idx, start_title, sub_filter=None):
+    """Reads items from a specific column index only."""
     data = []
-    found_sub_header = False
+    found_start = False
     
-    # 2. Start from 'RAMS' and look for DDR3, DDR4, or DDR5
-    for i in range(row_idx + 1, len(df)):
+    for i in range(len(df)):
         cell_val = str(df.iloc[i, col_idx]).strip()
         
-        # If we find our target tech (e.g., DDR5)
-        if cell_val.upper() == tech_type.upper():
-            found_sub_header = True
+        # Look for the header (e.g. PROCESSORS or DDR5)
+        if not found_start:
+            if cell_val.upper() == start_title.upper():
+                found_start = True
             continue
         
-        # If we are in our tech section, grab names until we hit the next DDR header or empty
-        if found_sub_header:
-            if not cell_val or cell_val.lower() == "nan" or "DDR" in cell_val.upper():
-                if len(data) > 0: break # Stop if we hit the next section
+        # Once header is found, collect items
+        if found_start:
+            # STOP if cell is empty or we hit another major DDR header (if we are in RAMS)
+            if not cell_val or cell_val.lower() == "nan" or cell_val == "":
+                if len(data) > 0: break
                 continue
             
+            # If we are looking for a specific RAM tech (DDR3/4/5)
+            if sub_filter and "DDR" in cell_val.upper() and cell_val.upper() != sub_filter.upper():
+                if len(data) > 0: break
+                continue
+
             try:
-                price = str(df.iloc[i, col_idx + 1]).replace('$','').replace(',','').strip()
-                data.append({"ITEM": cell_val, "PRICE": int(round(float(price), 0))})
+                price_val = str(df.iloc[i, col_idx + 1]).replace('$','').replace(',','').strip()
+                data.append({"ITEM": cell_val, "PRICE": int(round(float(price_val), 0))})
             except: continue
             
-    return pd.DataFrame(data)
-
-def find_standard_data(df, title):
-    """Handles standard columns like PROCESSORS, MOTHER BOARDS, etc."""
-    mask = df.apply(lambda s: s.astype(str).str.strip().str.upper() == title.upper())
-    matches = mask.stack()
-    if matches.empty: return pd.DataFrame()
-    
-    row_idx, col_idx = matches.index[0]
-    data = []
-    for i in range(row_idx + 1, len(df)):
-        name = str(df.iloc[i, col_idx]).strip()
-        if not name or name.lower() == "nan" or name == "": break
-        try:
-            price = str(df.iloc[i, col_idx + 1]).replace('$','').replace(',','').strip()
-            data.append({"ITEM": name, "PRICE": int(round(float(price), 0))})
-        except: continue
     return pd.DataFrame(data)
 
 # --- 4. APP EXECUTION ---
 raw_df = load_all_data()
 
 if not raw_df.empty:
-    # Standard Categories
-    titles = {
-        'cpu': 'PROCESSORS', 'mb': 'MOTHER BOARDS', 'gpu': 'GRAPHICS CARDS',
-        'psu': 'POWER SUPPLIES', 'case': 'CASES', 'coo': 'CPU COOLERS',
-        'storage': 'INTERNAL STORAGE'
+    # We map titles to their exact column index in your sheet
+    # Column A=0, D=3, G=6, J=9 etc.
+    dfs = {
+        'cpu': get_data_from_col(raw_df, 0, 'PROCESSORS'),
+        'mb':  get_data_from_col(raw_df, 3, 'MOTHER BOARDS'),
+        'gpu': get_data_from_col(raw_df, 6, 'GRAPHICS CARDS'),
+        'psu': get_data_from_col(raw_df, 9, 'POWER SUPPLIES'),
+        'case': get_data_from_col(raw_df, 12, 'CASES'),
+        'st':   get_data_from_col(raw_df, 15, 'INTERNAL STORAGE')
     }
-    dfs = {k: find_standard_data(raw_df, v) for k, v in titles.items()}
     
     st.title("Technodel Smart Builder")
 
@@ -109,17 +95,16 @@ if not raw_df.empty:
         
         mb_choice = st.selectbox("Motherboard", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in mb_options.iterrows()], key="m")
         
-        # FIXED RAM LOGIC: Detects DDR tech from board name and finds sub-header in Sheet
+        # RAM LOGIC: Find the RAM column (likely column index 18) and find sub-header
         if "Select" not in mb_choice:
             tech = "DDR5" if "DDR5" in mb_choice.upper() else "DDR3" if "DDR3" in mb_choice.upper() else "DDR4"
-            current_ram_df = find_ram_by_tech(raw_df, tech)
+            # Assuming RAMS are in Column S (Index 18) based on your layout
+            ram_df = get_data_from_col(raw_df, 18, tech)
             
             if 'ram_count' not in st.session_state: st.session_state.ram_count = 1
             for i in range(st.session_state.ram_count):
-                st.selectbox(f"{tech} RAM {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in current_ram_df.iterrows()], key=f"ram_{i}")
-            
-            if st.button("➕ Add RAM"):
-                st.session_state.ram_count += 1; st.rerun()
+                st.selectbox(f"{tech} RAM {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in ram_df.iterrows()], key=f"ram_{i}")
+            if st.button("➕ Add RAM"): st.session_state.ram_count += 1; st.rerun()
 
     with col2:
         gpu_choice = st.selectbox("GPU", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in dfs['gpu'].iterrows()], key="g")
@@ -127,25 +112,21 @@ if not raw_df.empty:
         case_choice = st.selectbox("Case", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in dfs['case'].iterrows()], key="ca")
         
         st.divider()
-        if 'storage_count' not in st.session_state: st.session_state.storage_count = 1
-        for i in range(st.session_state.storage_count):
-            st.selectbox(f"Storage {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in dfs['storage'].iterrows()], key=f"store_{i}")
-        if st.button("➕ Add Storage"):
-            st.session_state.storage_count += 1; st.rerun()
+        if 'st_count' not in st.session_state: st.session_state.st_count = 1
+        for i in range(st.session_state.st_count):
+            st.selectbox(f"Storage {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in dfs['st'].iterrows()], key=f"st_{i}")
+        if st.button("➕ Add Storage"): st.session_state.st_count += 1; st.rerun()
 
     # --- TOTALS ---
     total = 0
-    for key in ['c', 'm', 'g', 'p', 'ca']:
-        val = st.session_state.get(key)
-        if val and "Select" not in val: total += int(val.split(" - $")[1].replace(",", ""))
-
-    for i in range(st.session_state.get('ram_count', 1)):
-        val = st.session_state.get(f"ram_{i}")
-        if val and "Select" not in val: total += int(val.split(" - $")[1].replace(",", ""))
-
-    for i in range(st.session_state.get('storage_count', 1)):
-        val = st.session_state.get(f"store_{i}")
-        if val and "Select" not in val: total += int(val.split(" - $")[1].replace(",", ""))
-
+    summary = []
+    for k, lab in [('c','CPU'), ('m','MB'), ('g','GPU'), ('p','PSU'), ('ca','Case')]:
+        v = st.session_state.get(k)
+        if v and "Select" not in v:
+            total += int(v.split(" - $")[1].replace(",",""))
+            summary.append(f"{lab}: {v}")
+    
+    st.divider()
     if total > 0:
-        st.header(f"TOTAL PRICE: ${total:,}")
+        st.header(f"Total: ${total:,}")
+        for s in summary: st.write(s)
