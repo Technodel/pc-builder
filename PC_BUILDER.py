@@ -7,6 +7,7 @@ import urllib.parse
 # --- 1. PAGE CONFIG & LOGO ---
 st.set_page_config(page_title="Technodel Pro Builder", layout="wide", page_icon="💻")
 
+# Technodel Logo
 st.markdown(
     """
     <div style="text-align: left; padding-bottom: 5px;">
@@ -16,21 +17,29 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- 2. THE BOT CONNECTION (FIXES HTTP 400) ---
+# Custom Styling
+st.markdown("""
+    <style>
+    .stSelectbox { margin-bottom: -15px; }
+    .stButton button { width: 100%; border-radius: 5px; height: 2.2em; margin-top: 10px;}
+    .live-summary { background-color: #f0f8ff; padding: 20px; border-radius: 10px; border: 1px solid #00a8e8; margin-bottom: 20px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 2. THE CONNECTION (BOT LOGIC) ---
 @st.cache_data(ttl=600)
 def load_all_data():
     try:
-        # Official connection logic used in your marketing bot
+        # Create connection using secrets
         conn = st.connection("gsheets", type=GSheetsConnection)
         
-        # This URL points to your specific Google Sheet
-        SHEET_URL = "https://docs.google.com/spreadsheets/d/1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4/edit#gid=0"
-        
-        # Load the 'hardware' worksheet specifically
-        df = conn.read(spreadsheet=SHEET_URL, worksheet="hardware")
+        # Pull data from the "hardware" tab
+        # Note: spreadsheet URL is now stored in Secrets for security
+        df = conn.read(worksheet="hardware")
         return df
     except Exception as e:
         st.error(f"❌ Connection Error: {e}")
+        st.info("Check if your Secrets are configured and the Sheet is shared with the Service Account email.")
         return pd.DataFrame()
 
 def parse_section(df, keyword):
@@ -40,27 +49,20 @@ def parse_section(df, keyword):
     current_ram_tech = None
     
     for _, row in df.iterrows():
-        # Column A is index 0 (contains table_cpu, etc.)
         val_a = str(row.iloc[0]).strip() if pd.notnull(row.iloc[0]) else ""
-        
         if not found_section:
             if f"table_{keyword.lower()}" in val_a.lower():
                 found_section = True
             continue
-        
-        # Stop at next table tag or empty row
         if not val_a or val_a == "nan" or "table_" in val_a.lower():
             break
-            
         if "DDR4" in val_a.upper(): current_ram_tech = "DDR4"
         if "DDR5" in val_a.upper(): current_ram_tech = "DDR5"
         
         try:
-            # Column B = Name (Index 1), Column C = Price (Index 2)
             name = str(row.iloc[1])
-            raw_price = str(row.iloc[2]).replace('$', '').replace(',', '').strip()
-            clean_price = int(round(float(raw_price), 0))
-            
+            price_str = str(row.iloc[2]).replace('$', '').replace(',', '').strip()
+            clean_price = int(round(float(price_str), 0))
             data.append({
                 "ITEM": name, 
                 "PRICE": clean_price,
@@ -69,19 +71,24 @@ def parse_section(df, keyword):
         except: continue
     return pd.DataFrame(data)
 
-# --- 3. EXECUTION & UI ---
+# --- 3. LOGIC & UI ---
 raw_sheet = load_all_data()
 sections = ["cpu", "mb", "ram", "gpu", "case", "psu", "coo", "storage"]
 dfs = {s: parse_section(raw_sheet, s) for s in sections}
 
-# [REST OF YOUR PERFECT CODE LOGIC UNCHANGED]
+# --- SELECTBOXES & COMPATIBILITY ---
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.title("Build Your PC")
+    # Example Selection
+    cpu_list = ["Select CPU"] + dfs['cpu']['ITEM'].tolist() if not dfs['cpu'].empty else ["No Data"]
+    selected_cpu = st.selectbox("Step 1: Choose Processor", cpu_list, key="c")
 
 # --- 4. SHARE BUILD LINK ---
-# Pre-fills the app for the customer [cite: 2026-02-19]
-if any(st.session_state.get(k) and "Select" not in st.session_state[k] for k in ['c','m','g']):
-    st.divider()
+st.divider()
+if any(st.session_state.get(k) and "Select" not in str(st.session_state[k]) for k in ['c']):
     base_url = "https://technodel-builder.streamlit.app/?"
-    # Build query params for the link
-    params = {k: st.session_state[k] for k in ['c','m','g','p','ca','co'] if st.session_state.get(k) and "Select" not in st.session_state[k]}
+    params = {k: st.session_state[k] for k in ['c','m','g','p','ca','co'] if st.session_state.get(k) and "Select" not in str(st.session_state[k])}
     st.subheader("🔗 Share Build Link")
     st.code(base_url + urllib.parse.urlencode(params))
