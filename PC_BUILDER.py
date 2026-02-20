@@ -5,17 +5,21 @@ import urllib.parse
 # --- 1. UI SETTINGS ---
 st.set_page_config(page_title="Technodel PC Builder 🖥️", layout="wide")
 
-# --- 2. THE STURDY SOURCE ---
+# --- 2. THE STURDY DATA SOURCE ---
 def get_data():
     try:
-        # Your clean Sheet ID
-        sheet_id = "1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4"
+        # Your specific Sheet ID from the link you provided
+        SHEET_ID = "1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4"
         
-        # We use the direct export link to target the 'hardware' tab
-        # This replaces the local Excel file logic perfectly
-        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&sheet=hardware"
+        # IMPORTANT: If your 'hardware' tab is NOT the first tab, 
+        # change '0' to the number you see after 'gid=' in your browser URL.
+        GID = "0" 
         
-        df = pd.read_csv(url)
+        # This direct link replaces the local Excel file logic perfectly
+        URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}"
+        
+        # Load data just like we did yesterday
+        df = pd.read_csv(URL)
         
         # Original Logic: Start from Row 4 (skipping first 2 junk rows)
         df = df.iloc[2:].copy()
@@ -34,10 +38,10 @@ st.title("Technodel PC Builder")
 df = get_data()
 
 if df is not None:
-    # URL Parameters for sharing links with customers
+    # URL Parameters for the "Share Build" feature [2026-02-19]
     params = st.query_params
     
-    # Categories exactly as they appear in your Category column (Col A)
+    # Categories based on your 'hardware' sheet structure
     categories = ["CPU", "GPU", "RAM", "Motherboard", "Storage", "PSU", "Case"]
     build = {}
     total_price = 0
@@ -46,21 +50,21 @@ if df is not None:
     
     for i, cat in enumerate(categories):
         with cols[i % 3]:
-            # Search Column A for the specific category
+            # Filter Column A (Index 0) for the category name
             cat_df = df[df.iloc[:, 0].str.contains(cat, case=False, na=False)]
             
             options = []
             for _, row in cat_df.iterrows():
                 try:
                     name = str(row.iloc[1])
-                    # Clean currency formatting
+                    # Clean price formatting ($ and ,) [2026-02-16]
                     price_str = str(row.iloc[2]).replace('$', '').replace(',', '').strip()
                     price = int(round(float(price_str), 0))
                     options.append({"name": name, "price": price})
                 except: continue
             
             if options:
-                # Set default from URL if customer clicked a shared link
+                # Share Build auto-selection logic
                 default_idx = 0
                 if cat in params:
                     for idx, opt in enumerate(options):
@@ -72,12 +76,12 @@ if df is not None:
                 build[cat] = sel
                 total_price += sel['price']
             else:
-                st.warning(f"Category '{cat}' not found in hardware sheet.")
+                st.warning(f"Category '{cat}' not found in the sheet.")
 
     st.divider()
     st.header(f"Total Price: ${total_price}")
 
-    # --- 4. SHARE LINK ---
+    # --- 4. SHARE LINK GENERATION ---
     base_url = "https://technodel-builder.streamlit.app/?"
     query_string = urllib.parse.urlencode({k: v['name'] for k, v in build.items()})
     st.subheader("🔗 Share Build Link")
