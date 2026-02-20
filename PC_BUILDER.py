@@ -4,7 +4,7 @@ from streamlit_gsheets import GSheetsConnection
 import re
 import urllib.parse
 
-# --- 1. PAGE CONFIG & LOGO ---
+# --- 1. PAGE CONFIG & LOGO (Your exact layout) ---
 st.set_page_config(page_title="Technodel Pro Builder", layout="wide", page_icon="💻")
 
 st.markdown(
@@ -16,20 +16,28 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- 2. DATA LOADER (THE BOT LOGIC) ---
+st.markdown("""
+    <style>
+    .stSelectbox { margin-bottom: -15px; }
+    .stButton button { width: 100%; border-radius: 5px; height: 2.2em; margin-top: 10px;}
+    .live-summary { background-color: #f0f8ff; padding: 20px; border-radius: 10px; border: 1px solid #00a8e8; margin-bottom: 20px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 2. DATA LOADER (Official Handshake Logic) ---
 @st.cache_data(ttl=600)
 def load_all_data():
     try:
-        # Step A: Establish connection
+        # Using the official connection logic that worked for your bot
         conn = st.connection("gsheets", type=GSheetsConnection)
         
-        # Step B: Read the 'hardware' tab
-        # We use 'read' without a URL because the URL should be in your Secrets
+        # Read the 'hardware' tab specifically as shown in image_d53340.png
         df = conn.read(worksheet="hardware")
         return df
     except Exception as e:
+        # This triggers the message seen in image_df3ae6.png
         st.error(f"❌ Connection Error: {e}")
-        st.info("💡 ACTION REQUIRED: Ensure you have added the 'client_email' from your Secrets to your Google Sheet 'Share' list.")
+        st.info("💡 ACTION REQUIRED: Go to your Google Sheet 'Share' and add the 'client_email' from your Secrets.")
         return pd.DataFrame()
 
 def parse_section(df, keyword):
@@ -49,6 +57,7 @@ def parse_section(df, keyword):
             
         try:
             name = str(row.iloc[1]) # Column B
+            # Clean price ($ and ,)
             price_str = str(row.iloc[2]).replace('$', '').replace(',', '').strip()
             clean_price = int(round(float(price_str), 0))
             
@@ -60,31 +69,28 @@ def parse_section(df, keyword):
         except: continue
     return pd.DataFrame(data)
 
-# --- 3. EXECUTION ---
+# --- 3. EXECUTION & UI ---
 raw_sheet = load_all_data()
 sections = ["cpu", "mb", "ram", "gpu", "case", "psu", "coo", "storage"]
 dfs = {s: parse_section(raw_sheet, s) for s in sections}
 
-# --- 4. THE UI (RESTORED PERFECT LOGIC) ---
 st.title("Build Your PC")
 
 if raw_sheet.empty:
-    st.warning("⚠️ No data loaded. Please check the connection error above.")
+    st.warning("⚠️ No data loaded. Check connection and Sheet sharing.")
 else:
-    col1, col2 = st.columns([1, 1])
+    # URL Sharing selection logic
+    params = st.query_params
     
+    col1, col2 = st.columns([1, 1])
     with col1:
         cpu_options = ["Select CPU"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in dfs['cpu'].iterrows()]
-        cpu_choice = st.selectbox("Step 1: Processor", cpu_options, key="c")
-        
-        # Auto-selection from URL Logic
-        params = st.query_params
-        # ... (rest of your selection logic)
+        cpu_choice = st.selectbox("Choose Processor", cpu_options, key="c")
 
-    # --- 5. SHARE BUILD LINK ---
+    # --- 4. SHARE BUILD LINK ---
     st.divider()
     base_url = "https://technodel-builder.streamlit.app/?"
-    # Only show link if parts are selected
+    # Generate the query params for the link
     active_params = {k: st.session_state[k] for k in ['c'] if st.session_state.get(k) and "Select" not in st.session_state[k]}
     
     if active_params:
