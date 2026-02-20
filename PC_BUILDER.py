@@ -6,23 +6,76 @@ import re
 import urllib.parse
 from fpdf import FPDF
 
-# --- 1. CONFIG & RESET LOGIC ---
-st.set_page_config(page_title="Technodel PC Builder", layout="wide")
+# --- 1. RESET ENGINE ---
+# This 'rid' changes every time you click reset, forcing dropdowns to clear.
+if 'rid' not in st.session_state:
+    st.session_state.rid = 0
 
-# This 'form_id' is the secret. Changing it forces Streamlit to rebuild all menus.
-if 'form_id' not in st.session_state:
-    st.session_state.form_id = 0
+def hard_reset():
+    st.session_state.rid += 1
+    # Keep only the reset counter, clear everything else
+    curr_rid = st.session_state.rid
+    st.session_state.clear()
+    st.session_state.rid = curr_rid
+
+# --- 2. CONFIG & PREMIUM STYLING ---
+st.set_page_config(page_title="Technodel PC Builder", layout="wide")
 
 st.markdown("""
     <style>
-    .build-box { border: 1px solid rgba(0, 168, 232, 0.3); padding: 25px; border-radius: 15px; background: #f0f8ff; color: #1a1a1a; }
-    .build-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
-    .total-row { margin-top: 15px; font-size: 24px; font-weight: bold; color: #00a8e8; text-align: right; }
-    .social-link { display: block; padding: 10px; margin: 5px 0; text-decoration: none; color: #333; border-radius: 5px; background: #f1f1f1; }
+    .build-box { 
+        border: 1px solid rgba(0, 168, 232, 0.3); 
+        padding: 25px; 
+        border-radius: 15px; 
+        background: linear-gradient(135deg, #ffffff 0%, #f0f8ff 100%);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        color: #1a1a1a;
+    }
+    .build-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #eee;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .total-row {
+        margin-top: 15px;
+        font-size: 24px;
+        font-weight: bold;
+        color: #00a8e8;
+        text-align: right;
+    }
+    .social-link {
+        display: block;
+        padding: 10px;
+        margin: 5px 0;
+        text-decoration: none;
+        color: #333;
+        border-radius: 5px;
+        background: #f1f1f1;
+        transition: 0.3s;
+    }
+    .social-link:hover { background: #00a8e8; color: white; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DATA ENGINE ---
+# --- 3. LOGIC & DATA ---
+def get_cpu_gen(cpu_name):
+    match = re.search(r'(\d{4,5})', cpu_name)
+    if match:
+        val = match.group(1)
+        return val[:2] if len(val) == 5 else val[0]
+    return None
+
+def is_compat(cpu_sel, mb_name):
+    if "Select" in cpu_sel: return True
+    gen = get_cpu_gen(cpu_sel)
+    match = re.search(r'\((.*?)\)', mb_name)
+    if gen and match:
+        allowed = re.findall(r'\d+', match.group(1))
+        return str(gen) in allowed
+    return True
+
 @st.cache_data(ttl=300)
 def load_all_data():
     SHEET_ID = "1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4"
@@ -54,70 +107,116 @@ def get_items_from_col(df, col_idx, start_title, stop_at_next_header=True, exclu
             except: continue
     return pd.DataFrame(data)
 
-# --- 3. INTERFACE ---
+# --- 4. APP INTERFACE ---
 raw_df = load_all_data()
 
 if not raw_df.empty:
+    rid = st.session_state.rid # Current reset ID
+    
     with st.sidebar:
         st.image("https://technodel.net/wp-content/uploads/2024/08/technodel-site-logo-01.webp", width=200)
-        # HARD RESET BUTTON
-        if st.button("🔄 Reset Build", use_container_width=True):
-            st.session_state.form_id += 1  # Changing this forces all keys to change
-            st.rerun()
-        st.info("🛡️ 1 Year Hardware Warranty")
+        st.subheader("Connect with us")
+        st.markdown("""
+            <a href="https://instagram.com/technodel" class="social-link">📸 Instagram</a>
+            <a href="https://wa.me/96170449900" class="social-link">💬 WhatsApp Admin</a>
+        """, unsafe_allow_html=True)
+        st.divider()
+        
+        # RESET BUTTON
+        st.button("🔄 Reset Build", on_click=hard_reset, use_container_width=True)
+        
+        st.divider()
+        st.info("🛡️ 1 Year Hardware Warranty\n\n🚀 Ready in 24h")
 
-    # Categories
+    # Data Pulling
     cpu_df = get_items_from_col(raw_df, 0, 'PROCESSORS')
+    coo_df = get_items_from_col(raw_df, 0, 'CPU COOLERS')
+    cas_df = get_items_from_col(raw_df, 0, 'CASES')
     mb_df  = get_items_from_col(raw_df, 3, 'MOTHER BOARDS')
+    st_df  = get_items_from_col(raw_df, 3, 'INTERNAL STORAGE')
+    psu_df = get_items_from_col(raw_df, 9, 'POWER SUPPLIES')
     gpu_df = get_items_from_col(raw_df, 9, 'GRAPHICS CARDS')
-    
-    fid = st.session_state.form_id # Our unique version ID
 
     st.title("Technodel PC Builder Pro")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Every key now includes the form_id. If form_id changes, the widget is DELETED and remade.
-        cpu_c = st.selectbox("Processor", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in cpu_df.iterrows()], key=f"cpu_{fid}")
-        mb_c = st.selectbox("Motherboard", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in mb_df.iterrows()], key=f"mb_{fid}")
-        
-    with col2:
-        gpu_c = st.selectbox("GPU", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in gpu_df.iterrows()], key=f"gpu_{fid}")
 
-    # --- 4. SUMMARY & PDF ---
+    col1, col2 = st.columns(2)
+    with col1:
+        cpu_c = st.selectbox("Processor", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in cpu_df.iterrows()], key=f"c_{rid}")
+        mb_l = mb_df[mb_df['ITEM'].apply(lambda x: is_compat(cpu_c, x))] if "Select" not in cpu_c else mb_df
+        mb_c = st.selectbox("Motherboard", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in mb_l.iterrows()], key=f"m_{rid}")
+        
+        if "Select" not in mb_c:
+            tech = "DDR5" if "DDR5" in mb_c.upper() else "DDR3" if "DDR3" in mb_c.upper() else "DDR4"
+            ram_df = get_items_from_col(raw_df, 6, tech, exclude_laptop=True)
+            if 'r_cnt' not in st.session_state: st.session_state.r_cnt = 1
+            for i in range(st.session_state.r_cnt):
+                st.selectbox(f"{tech} RAM {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in ram_df.iterrows()], key=f"r_{i}_{rid}")
+            if st.button("➕ RAM"): st.session_state.r_cnt += 1; st.rerun()
+
+    with col2:
+        gpu_c = st.selectbox("GPU", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in gpu_df.iterrows()], key=f"g_{rid}")
+        psu_c = st.selectbox("PSU", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in psu_df.iterrows()], key=f"p_{rid}")
+        cas_c = st.selectbox("Case", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in cas_df.iterrows()], key=f"ca_{rid}")
+        coo_c = st.selectbox("Cooler", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in coo_df.iterrows()], key=f"co_{rid}")
+        
+        if 's_cnt' not in st.session_state: st.session_state.s_cnt = 1
+        for i in range(st.session_state.s_cnt):
+            st.selectbox(f"Storage {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in st_df.iterrows()], key=f"s_{i}_{rid}")
+        if st.button("➕ Storage"): st.session_state.s_cnt += 1; st.rerun()
+
+    # --- 5. SUMMARY & EXPORT ---
     st.divider()
     total = 0
-    summary_txt = "TECHNODEL QUOTATION\n"
+    html_rows = ""
+    summary_txt = "TECHNODEL PC QUOTATION\n" + "="*25 + "\n"
     
-    # Simple calculation check
-    selected_parts = [cpu_c, mb_c, gpu_c]
-    for p in selected_parts:
-        if p != "Select":
-            name, price = p.split(" - $")
-            total += int(price.replace(",",""))
-            summary_txt += f"- {name}: ${price}\n"
+    # Logic to fetch from current version of keys
+    p_keys = [(f'c_{rid}', 'CPU'), (f'm_{rid}', 'Motherboard'), (f'g_{rid}', 'GPU'), (f'p_{rid}', 'PSU'), (f'ca_{rid}', 'Case'), (f'co_{rid}', 'Cooler')]
+    
+    for k, label in p_keys:
+        val = st.session_state.get(k)
+        if val and "Select" not in val:
+            item_name, item_price = val.split(" - $")
+            total += int(item_price.replace(",", ""))
+            html_rows += f'<div class="build-item"><span>{label}: {item_name}</span><b>${item_price}</b></div>'
+            summary_txt += f"{label}: {val}\n"
+
+    for i in range(st.session_state.get('r_cnt', 1)):
+        v = st.session_state.get(f"r_{i}_{rid}")
+        if v and "Select" not in v:
+            name, price = v.split(" - $")
+            total += int(price.replace(",", "")); summary_txt += f"RAM: {v}\n"
+            html_rows += f'<div class="build-item"><span>RAM {i+1}: {name}</span><b>${price}</b></div>'
+            
+    for i in range(st.session_state.get('s_cnt', 1)):
+        v = st.session_state.get(f"s_{i}_{rid}")
+        if v and "Select" not in v:
+            name, price = v.split(" - $")
+            total += int(price.replace(",", "")); summary_txt += f"Storage: {v}\n"
+            html_rows += f'<div class="build-item"><span>Storage {i+1}: {name}</span><b>${price}</b></div>'
 
     if total > 0:
-        st.markdown(f'<div class="build-box"><h3>Total: ${total:,}</h3></div>', unsafe_allow_html=True)
+        st.subheader("🖥️ Your Quotation")
+        st.markdown(f'<div class="build-box">{html_rows}<div class="total-row">Total: ${total:,}</div></div>', unsafe_allow_html=True)
         
-        # FIXING THE PDF CRASH
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
-        pdf.multi_cell(0, 10, txt=summary_txt)
-        pdf.cell(0, 10, txt=f"TOTAL: ${total:,}", ln=True)
-        
-        # This is the magic line that fixes the Streamlit error:
-        # We output to a string 'S', then encode to latin-1 bytes.
-        pdf_output = pdf.output(dest='S').encode('latin-1')
-        
-        st.download_button(
-            label="📄 Download PDF",
-            data=pdf_output,
-            file_name="Technodel_Quote.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
-
-        wa_url = f"https://wa.me/9613659872?text={urllib.parse.quote(summary_txt + f'TOTAL: ${total}')}"
-        st.link_button("🟢 WhatsApp Order", wa_url, use_container_width=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            # Generate PDF
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("helvetica", size=12)
+            for line in summary_txt.split('\n'):
+                pdf.cell(200, 10, text=line, ln=True)
+            pdf.cell(200, 10, text=f"TOTAL: ${total:,}", ln=True)
+            
+            # CRITICAL FIX: Ensure output is bytes
+            pdf_data = pdf.output()
+            if isinstance(pdf_data, (bytes, bytearray)) == False:
+                pdf_data = pdf_data.encode('latin-1')
+            
+            st.download_button("📄 Download PDF", pdf_data, "Quote.pdf", "application/pdf", use_container_width=True)
+            
+        with c2:
+            wa_msg = f"Order Build:\n{summary_txt}\nTotal: ${total:,}"
+            wa_url = f"https://wa.me/9613659872?text={urllib.parse.quote(wa_msg)}"
+            st.link_button("🟢 WhatsApp Order", wa_url, use_container_width=True)
