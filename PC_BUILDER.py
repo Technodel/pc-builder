@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
-from streamlit_gsheets import GSheetsConnection
-import re
 import urllib.parse
+import requests
+from io import BytesIO
 
 # --- 1. PAGE CONFIG & LOGO ---
 st.set_page_config(page_title="Technodel Pro Builder", layout="wide", page_icon="💻")
@@ -16,77 +16,68 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- 2. THE CONNECTION (FIXES HTTP 400) ---
+# --- 2. DATA LOADER (THE "NO-EMAIL" METHOD) ---
 @st.cache_data(ttl=600)
 def load_all_data():
+    # Replace this with your actual Google Sheet ID
+    SHEET_ID = "1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4"
+    # Use the gid for the 'hardware' tab (usually 0 if it's the first tab)
+    csv_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
+    
     try:
-        # Use the official connection method
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        
-        # Pull data from the worksheet named 'hardware'
-        df = conn.read(worksheet="hardware")
-        return df
+        # We add a 'User-Agent' to pretend we are a browser and avoid the 400 Error
+        response = requests.get(csv_url, headers={'User-Agent': 'Mozilla/5.0'})
+        if response.status_code == 200:
+            df = pd.read_csv(BytesIO(response.content))
+            return df
+        else:
+            st.error(f"❌ Google rejected the request (Status {response.status_code})")
+            return pd.DataFrame()
     except Exception as e:
-        # These error messages match your screenshots
-        st.error(f"Connection Error: {e}")
-        st.info("💡 ACTION REQUIRED: Share your Google Sheet with the 'client_email' from your Secrets!")
+        st.error(f"❌ Connection Error: {e}")
         return pd.DataFrame()
 
+# --- 3. PARSING LOGIC (Same as agreed) ---
 def parse_section(df, keyword):
     if df.empty: return pd.DataFrame()
     data = []
     found_section = False
-    current_ram_tech = None
     
     for _, row in df.iterrows():
-        # Column A is index 0 (labels like table_cpu)
         val_a = str(row.iloc[0]).strip() if pd.notnull(row.iloc[0]) else ""
-        
         if not found_section:
             if f"table_{keyword.lower()}" in val_a.lower():
                 found_section = True
             continue
-        
-        # Stop at next table or empty row
         if not val_a or val_a == "nan" or "table_" in val_a.lower():
             break
             
         try:
             name = str(row.iloc[1]) # Column B
-            # Clean price formatting
             price_str = str(row.iloc[2]).replace('$', '').replace(',', '').strip()
             clean_price = int(round(float(price_str), 0))
-            
-            data.append({
-                "ITEM": name, 
-                "PRICE": clean_price,
-                "RAM_TECH": "DDR5" if "DDR5" in name.upper() else ("DDR4" if "DDR4" in name.upper() else "DDR4")
-            })
+            data.append({"ITEM": name, "PRICE": clean_price})
         except: continue
     return pd.DataFrame(data)
 
-# --- 3. DATA & UI ---
+# --- 4. EXECUTION ---
 raw_sheet = load_all_data()
 
 if raw_sheet.empty:
-    st.warning("⚠️ No data loaded. Check connection and Sheet sharing.")
+    st.warning("⚠️ Still getting a 400 error. Ensure your sheet is 'Published to the Web'.")
 else:
-    sections = ["cpu", "mb", "ram", "gpu", "case", "psu", "coo", "storage"]
-    dfs = {s: parse_section(raw_sheet, s) for s in sections}
-
-    st.title("Build Your PC")
-    col1, col2 = st.columns([1, 1])
+    dfs = {s: parse_section(raw_sheet, s) for s in ["cpu", "mb", "ram", "gpu", "case"]}
+    st.success("✅ Connection Successful!")
     
-    with col1:
-        cpu_options = ["Select CPU"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in dfs['cpu'].iterrows()]
-        cpu_choice = st.selectbox("Choose Processor", cpu_options, key="c")
+    # Selection UI
+    cpu_list = ["Select CPU"] + dfs['cpu']['ITEM'].tolist()
+    st.selectbox("Step 1: Choose Processor", cpu_list, key="c")
 
-    # --- 4. SHARE BUILD LINK ---
-    st.divider()
+# --- 5. SHARE BUILD LINK (Your new project requirement) ---
+st.divider()
+if st.session_state.get('c') and "Select" not in st.session_state['c']:
     base_url = "https://technodel-builder.streamlit.app/?"
-    # Generate the query params for the share link
-    active_params = {k: st.session_state[k] for k in ['c'] if st.session_state.get(k) and "Select" not in st.session_state[k]}
-    
-    if active_params:
-        st.subheader("🔗 Share Build Link")
-        st.code(base_url + urllib.parse.urlencode(active_params))
+    # Generates the link for customers [cite: 2026-02-19]
+    params = {"c": st.session_state['c']}
+    st.subheader("🔗 Share Build Link")
+    st.code(base_url + urllib.parse.urlencode(params))
