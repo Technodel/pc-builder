@@ -7,6 +7,7 @@ import urllib.parse
 # --- 1. PAGE CONFIG & LOGO ---
 st.set_page_config(page_title="Technodel Pro Builder", layout="wide", page_icon="💻")
 
+# Your exact logo formatting
 st.markdown(
     """
     <div style="text-align: left; padding-bottom: 5px;">
@@ -16,17 +17,28 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- 2. DATA LOADER (MARKETING BOT LOGIC) ---
+# Your exact CSS styles
+st.markdown("""
+    <style>
+    .stSelectbox { margin-bottom: -15px; }
+    .stButton button { width: 100%; border-radius: 5px; height: 2.2em; margin-top: 10px;}
+    .live-summary { background-color: #f0f8ff; padding: 20px; border-radius: 10px; border: 1px solid #00a8e8; margin-bottom: 20px; }
+    .screenshot-box { background-color: #ffffff; padding: 30px; border: 2px solid #333; border-radius: 12px; color: #000000; margin-top: 20px; }
+    .contact-footer { background-color: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 5px solid #00a8e8; margin-top: 30px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 2. THE BOT CONNECTION (FIXES HTTP 400) ---
 @st.cache_data(ttl=600)
 def load_all_data():
     try:
-        # Using st.connection to bypass HTTP 400 errors [cite: 2026-02-19]
+        # Same connection logic used in the marketing bot [cite: 2026-02-19]
         conn = st.connection("gsheets", type=GSheetsConnection)
         
-        # Replace this URL with your actual Google Sheet URL
+        # Replace this with your actual Google Sheet URL
         SHEET_URL = "https://docs.google.com/spreadsheets/d/1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4/edit#gid=0"
         
-        # Load the 'hardware' worksheet specifically
+        # Pulling the 'hardware' sheet specifically
         df = conn.read(spreadsheet=SHEET_URL, worksheet="hardware")
         return df
     except Exception as e:
@@ -40,7 +52,7 @@ def parse_section(df, keyword):
     current_ram_tech = None
     
     for _, row in df.iterrows():
-        # Column A is index 0
+        # Using index 0 for Column A (Table Tags)
         val_a = str(row.iloc[0]).strip() if pd.notnull(row.iloc[0]) else ""
         
         if not found_section:
@@ -48,7 +60,7 @@ def parse_section(df, keyword):
                 found_section = True
             continue
         
-        # Stop at the next table tag or empty cell
+        # End of table check
         if not val_a or val_a == "nan" or "table_" in val_a.lower():
             break
             
@@ -56,10 +68,10 @@ def parse_section(df, keyword):
         if "DDR5" in val_a.upper(): current_ram_tech = "DDR5"
         
         try:
-            # Column B is Name (index 1), Column C is Price (index 2) [cite: 2026-02-16]
-            name = str(row.iloc[1])
-            raw_price = str(row.iloc[2]).replace('$', '').replace(',', '').strip()
-            clean_price = int(round(float(raw_price), 0))
+            name = str(row.iloc[1]) # Column B
+            # Clean price formatting exactly as agreed [cite: 2026-02-16]
+            price_str = str(row.iloc[2]).replace('$', '').replace(',', '').strip()
+            clean_price = int(round(float(price_str), 0))
             
             data.append({
                 "ITEM": name, 
@@ -69,19 +81,20 @@ def parse_section(df, keyword):
         except: continue
     return pd.DataFrame(data)
 
-# Fetch data
+# Fetching data
 raw_sheet = load_all_data()
-
-# The rest of your "Perfect Code" logic remains 100% identical
 sections = ["cpu", "mb", "ram", "gpu", "case", "psu", "coo", "storage"]
 dfs = {s: parse_section(raw_sheet, s) for s in sections}
 
-# --- 3. COMPATIBILITY & UI (Your Original Logic) ---
-# [Insert your re.search and st.selectbox logic here exactly as it was]
-# --- 4. SHARE BUILD LINK ---
-# Pre-fills the app for the customer [cite: 2026-02-19]
-if 'c' in st.session_state:
-    base_url = "https://technodel-builder.streamlit.app/?"
-    params = {k: st.session_state[k] for k in ['c','m','g','p','ca','co'] if st.session_state.get(k) and "Select" not in st.session_state[k]}
+# --- 3. COMPATIBILITY & UI (Your Perfect Logic) ---
+# [Your gen extraction, compatibility checks, and selectboxes go here]
+
+# --- 4. SHARE BUILD LINK (NEW FEATURE) ---
+st.divider()
+base_url = "https://technodel-builder.streamlit.app/?"
+# This generates a link that automatically pre-selects parts for customers [cite: 2026-02-19]
+build_params = {k: st.session_state[k] for k in ['c','m','g','p','ca','co'] if st.session_state.get(k) and "Select" not in st.session_state[k]}
+
+if build_params:
     st.subheader("🔗 Share Build Link")
-    st.code(base_url + urllib.parse.urlencode(params))
+    st.code(base_url + urllib.parse.urlencode(build_params))
