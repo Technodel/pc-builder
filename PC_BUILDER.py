@@ -20,11 +20,10 @@ st.markdown(
 @st.cache_data(ttl=600)
 def load_all_data():
     try:
-        # Using the official connection logic from your marketing bot [cite: 2026-02-19]
+        # Official connection logic used in your marketing bot
         conn = st.connection("gsheets", type=GSheetsConnection)
         
-        # This points to your specific Google Sheet
-        # Ensure this URL matches your actual hardware sheet URL
+        # This URL points to your specific Google Sheet
         SHEET_URL = "https://docs.google.com/spreadsheets/d/1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4/edit#gid=0"
         
         # Load the 'hardware' worksheet specifically
@@ -41,7 +40,7 @@ def parse_section(df, keyword):
     current_ram_tech = None
     
     for _, row in df.iterrows():
-        # Column A (Index 0) contains the table tags like table_cpu
+        # Column A is index 0 (contains table_cpu, etc.)
         val_a = str(row.iloc[0]).strip() if pd.notnull(row.iloc[0]) else ""
         
         if not found_section:
@@ -49,7 +48,7 @@ def parse_section(df, keyword):
                 found_section = True
             continue
         
-        # Stop at next table or empty row
+        # Stop at next table tag or empty row
         if not val_a or val_a == "nan" or "table_" in val_a.lower():
             break
             
@@ -57,7 +56,7 @@ def parse_section(df, keyword):
         if "DDR5" in val_a.upper(): current_ram_tech = "DDR5"
         
         try:
-            # Column B is Name (Index 1), Column C is Price (Index 2) [cite: 2026-02-16]
+            # Column B = Name (Index 1), Column C = Price (Index 2)
             name = str(row.iloc[1])
             raw_price = str(row.iloc[2]).replace('$', '').replace(',', '').strip()
             clean_price = int(round(float(raw_price), 0))
@@ -70,17 +69,19 @@ def parse_section(df, keyword):
         except: continue
     return pd.DataFrame(data)
 
-# --- 3. EXECUTION ---
+# --- 3. EXECUTION & UI ---
 raw_sheet = load_all_data()
 sections = ["cpu", "mb", "ram", "gpu", "case", "psu", "coo", "storage"]
 dfs = {s: parse_section(raw_sheet, s) for s in sections}
 
-# [Your original compatibility and UI logic follows here 100% unchanged]
+# [REST OF YOUR PERFECT CODE LOGIC UNCHANGED]
 
-# --- 4. SHARE BUILD LINK (NEW) ---
+# --- 4. SHARE BUILD LINK ---
+# Pre-fills the app for the customer [cite: 2026-02-19]
 if any(st.session_state.get(k) and "Select" not in st.session_state[k] for k in ['c','m','g']):
     st.divider()
     base_url = "https://technodel-builder.streamlit.app/?"
+    # Build query params for the link
     params = {k: st.session_state[k] for k in ['c','m','g','p','ca','co'] if st.session_state.get(k) and "Select" not in st.session_state[k]}
     st.subheader("🔗 Share Build Link")
     st.code(base_url + urllib.parse.urlencode(params))
