@@ -3,6 +3,8 @@ import pandas as pd
 import requests
 from io import BytesIO
 import re
+import urllib.parse
+from fpdf import FPDF
 
 # --- 1. CONFIG & PREMIUM STYLING ---
 st.set_page_config(page_title="Technodel PC Builder", layout="wide")
@@ -111,6 +113,14 @@ if not raw_df.empty:
             <a href="https://wa.me/96170449900" class="social-link">💬 WhatsApp</a>
         """, unsafe_allow_html=True)
         st.divider()
+        
+        # RESET BUTTON
+        if st.button("🔄 Reset Build", use_container_width=True):
+            for key in st.session_state.keys():
+                del st.session_state[key]
+            st.rerun()
+            
+        st.divider()
         st.write("📞 03 659872 | 70 449900")
         st.info("🛡️ 1 Year Hardware Warranty\n\n🚀 Ready in 24h")
 
@@ -186,8 +196,28 @@ if not raw_df.empty:
             </div>
         """, unsafe_allow_html=True)
         
-        col_dl, col_share = st.columns([1,1])
-        with col_dl:
-            st.download_button("💾 Download PDF (Text)", summary_txt + f"\nTOTAL: ${total:,}", file_name="Quotation.txt")
-
-
+        col_pdf, col_wa = st.columns(2)
+        
+        with col_pdf:
+            # REAL PDF GENERATION
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", size=12)
+            for line in summary_txt.split('\n'):
+                pdf.cell(200, 10, txt=line, ln=True)
+            pdf.cell(200, 10, txt=f"TOTAL: ${total:,}", ln=True)
+            pdf_output = pdf.output(dest='S').encode('latin-1')
+            
+            st.download_button(
+                label="📄 Download PDF Quote",
+                data=pdf_output,
+                file_name="Technodel_Quote.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+            
+        with col_wa:
+            # WHATSAPP ORDER
+            wa_text = f"Hello Technodel! I want to order this build:\n\n{summary_txt}\nTOTAL: ${total:,}"
+            wa_url = f"https://wa.me/9613659872?text={urllib.parse.quote(wa_text)}"
+            st.link_button("🟢 Order via WhatsApp", wa_url, use_container_width=True)
