@@ -4,6 +4,66 @@ import requests
 from io import BytesIO
 import re
 
+import streamlit as st
+from fpdf import FPDF
+import urllib.parse
+
+# --- 1. RESET LOGIC ---
+def reset_build():
+    for key in st.session_state.keys():
+        del st.session_state[key]
+    st.rerun()
+
+# --- 2. PDF GENERATOR ---
+def generate_pdf(build_text):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(200, 10, txt="Technodel PC Build Summary", ln=True, align='C')
+    pdf.set_font("Arial", size=12)
+    pdf.ln(10)
+    # Add build details
+    for line in build_text.split('\n'):
+        pdf.cell(200, 10, txt=line, ln=True, align='L')
+    return pdf.output(dest='S').encode('latin-1')
+
+# --- 3. WHATSAPP MESSAGE GENERATOR ---
+def send_whatsapp(build_text):
+    phone_number = "9613659872"
+    # Encode the text so spaces and $ signs work in the URL
+    encoded_text = urllib.parse.quote(f"Hello Technodel! I would like to order this build:\n\n{build_text}")
+    wa_url = f"https://wa.me/{phone_number}?text={encoded_text}"
+    return wa_url
+
+# --- UI IMPLEMENTATION ---
+st.title("🖥️ Technodel PC Builder")
+
+# ... (Your existing st.connection and part selection logic here) ...
+
+# Assuming 'final_build_summary' is a string containing all selected parts
+final_build_summary = "CPU: i7 14700K\nGPU: RTX 4070\nTotal: $1500" 
+
+st.divider()
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    if st.button("🔄 Reset Build", on_click=reset_build, use_container_width=True):
+        st.toast("Build Reset!")
+
+with col2:
+    pdf_data = generate_pdf(final_build_summary)
+    st.download_button(
+        label="📄 Download PDF",
+        data=pdf_data,
+        file_name="Technodel_Build.pdf",
+        mime="application/pdf",
+        use_container_width=True
+    )
+
+with col3:
+    wa_link = send_whatsapp(final_build_summary)
+    st.link_button("🟢 Order via WhatsApp", wa_link, use_container_width=True)
 # --- 1. CONFIG & PREMIUM STYLING ---
 st.set_page_config(page_title="Technodel PC Builder", layout="wide")
 
@@ -189,4 +249,5 @@ if not raw_df.empty:
         col_dl, col_share = st.columns([1,1])
         with col_dl:
             st.download_button("💾 Download PDF (Text)", summary_txt + f"\nTOTAL: ${total:,}", file_name="Quotation.txt")
+
 
