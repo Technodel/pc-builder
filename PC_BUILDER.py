@@ -4,7 +4,12 @@ import requests
 from io import BytesIO
 import re
 import urllib.parse
-from fpdf import FPDF
+# Line 7 is here:
+try:
+    from fpdf import FPDF
+    FPDF_AVAILABLE = True
+except ImportError:
+    FPDF_AVAILABLE = False
 
 # --- 1. CONFIG & PREMIUM STYLING ---
 st.set_page_config(page_title="Technodel PC Builder", layout="wide")
@@ -109,10 +114,11 @@ if not raw_df.empty:
             <a href="https://instagram.com/technodel" class="social-link">📸 Instagram</a>
             <a href="https://facebook.com/technodel" class="social-link">📘 Facebook</a>
             <a href="https://tiktok.com/@technodel" class="social-link">🎵 TikTok</a>
-            <a href="https://wa.me/96170449900" class="social-link">💬 WhatsApp</a>
+            <a href="https://wa.me/96170449900" class="social-link">💬 WhatsApp Admin</a>
         """, unsafe_allow_html=True)
         st.divider()
         
+        # RESET BUTTON
         if st.button("🔄 Reset Build", use_container_width=True):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
@@ -191,17 +197,20 @@ if not raw_df.empty:
         
         c1, c2 = st.columns(2)
         with c1:
-            try:
-                pdf = FPDF()
-                pdf.add_page()
-                pdf.set_font("Arial", size=12)
-                for line in summary_txt.split('\n'):
-                    pdf.cell(200, 10, txt=line.encode('latin-1', 'replace').decode('latin-1'), ln=True)
-                pdf.cell(200, 10, txt=f"TOTAL: ${total:,}", ln=True)
-                pdf_bytes = pdf.output(dest='S').encode('latin-1')
-                st.download_button("📄 Download PDF Quote", pdf_bytes, "Quote.pdf", "application/pdf", use_container_width=True)
-            except Exception as e:
-                st.error("PDF Error: Please check requirements.txt")
+            if FPDF_AVAILABLE:
+                try:
+                    pdf = FPDF()
+                    pdf.add_page()
+                    pdf.set_font("Arial", size=12)
+                    for line in summary_txt.split('\n'):
+                        pdf.cell(200, 10, txt=line.encode('latin-1', 'replace').decode('latin-1'), ln=True)
+                    pdf.cell(200, 10, txt=f"TOTAL: ${total:,}", ln=True)
+                    pdf_bytes = pdf.output(dest='S').encode('latin-1')
+                    st.download_button("📄 Download PDF Quote", pdf_bytes, "Quote.pdf", "application/pdf", use_container_width=True)
+                except:
+                    st.error("Error generating PDF file.")
+            else:
+                st.warning("Install 'fpdf' in requirements.txt to enable PDF.")
             
         with c2:
             wa_url = f"https://wa.me/9613659872?text={urllib.parse.quote('Order Build:\n' + summary_txt + 'Total: $' + str(total))}"
