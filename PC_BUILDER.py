@@ -9,10 +9,6 @@ from fpdf import FPDF
 # --- 1. CONFIG & PREMIUM STYLING ---
 st.set_page_config(page_title="Technodel PC Builder", layout="wide")
 
-# Initialize a 'reset_counter' to force-reset widgets
-if 'reset_cnt' not in st.session_state:
-    st.session_state.reset_cnt = 0
-
 st.markdown("""
     <style>
     .build-box { 
@@ -115,19 +111,19 @@ if not raw_df.empty:
         """, unsafe_allow_html=True)
         st.divider()
         
-        # FULL RESET (NOW RESETS DROPDOWNS TOO)
+        # --- ENHANCED RESET LOGIC ---
         if st.button("🔄 Reset Build", use_container_width=True):
-            st.session_state.reset_cnt += 1 # Forces new keys for all selectboxes
-            # Clear counts but keep our reset_cnt
-            curr_reset = st.session_state.reset_cnt
-            st.session_state.clear()
-            st.session_state.reset_cnt = curr_reset
+            # Clear all session state items
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            # Immediately rerun to ensure widgets realize their keys are gone
             st.rerun()
 
         st.divider()
         st.write("📞 03 659872 | 70 449900")
         st.info("🛡️ 1 Year Hardware Warranty\n\n🚀 Ready in 24h")
 
+    # Load data categories
     cpu_df = get_items_from_col(raw_df, 0, 'PROCESSORS')
     coo_df = get_items_from_col(raw_df, 0, 'CPU COOLERS')
     cas_df = get_items_from_col(raw_df, 0, 'CASES')
@@ -137,42 +133,44 @@ if not raw_df.empty:
     gpu_df = get_items_from_col(raw_df, 9, 'GRAPHICS CARDS')
 
     st.title("Technodel PC Builder Pro")
-    
-    # We add reset_cnt to every key to force reset the widgets
-    r_c = st.session_state.reset_cnt
 
     col1, col2 = st.columns(2)
     with col1:
-        cpu_c = st.selectbox("Processor", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in cpu_df.iterrows()], key=f"c_{r_c}")
+        cpu_c = st.selectbox("Processor", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in cpu_df.iterrows()], key="cpu_sb")
         mb_l = mb_df[mb_df['ITEM'].apply(lambda x: is_compat(cpu_c, x))] if "Select" not in cpu_c else mb_df
-        mb_c = st.selectbox("Motherboard", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in mb_l.iterrows()], key=f"m_{r_c}")
+        mb_c = st.selectbox("Motherboard", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in mb_l.iterrows()], key="mb_sb")
+        
         if "Select" not in mb_c:
             tech = "DDR5" if "DDR5" in mb_c.upper() else "DDR3" if "DDR3" in mb_c.upper() else "DDR4"
             ram_df = get_items_from_col(raw_df, 6, tech, exclude_laptop=True)
             if 'r_cnt' not in st.session_state: st.session_state.r_cnt = 1
             for i in range(st.session_state.r_cnt):
-                st.selectbox(f"{tech} RAM {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in ram_df.iterrows()], key=f"r_{i}_{r_c}")
+                st.selectbox(f"{tech} RAM {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in ram_df.iterrows()], key=f"ram_{i}")
             if st.button("➕ RAM"): st.session_state.r_cnt += 1; st.rerun()
 
     with col2:
-        gpu_c = st.selectbox("GPU", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in gpu_df.iterrows()], key=f"g_{r_c}")
-        psu_c = st.selectbox("PSU", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in psu_df.iterrows()], key=f"p_{r_c}")
-        cas_c = st.selectbox("Case", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in cas_df.iterrows()], key=f"ca_{r_c}")
-        coo_c = st.selectbox("Cooler", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in coo_df.iterrows()], key=f"co_{r_c}")
+        gpu_c = st.selectbox("GPU", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in gpu_df.iterrows()], key="gpu_sb")
+        psu_c = st.selectbox("PSU", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in psu_df.iterrows()], key="psu_sb")
+        cas_c = st.selectbox("Case", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in cas_df.iterrows()], key="case_sb")
+        coo_c = st.selectbox("Cooler", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in coo_df.iterrows()], key="cool_sb")
+        
         if 's_cnt' not in st.session_state: st.session_state.s_cnt = 1
         for i in range(st.session_state.s_cnt):
-            st.selectbox(f"Storage {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in st_df.iterrows()], key=f"s_{i}_{r_c}")
+            st.selectbox(f"Storage {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in st_df.iterrows()], key=f"storage_{i}")
         if st.button("➕ Storage"): st.session_state.s_cnt += 1; st.rerun()
 
+    # --- 5. SUMMARY CALCULATION ---
     st.divider()
     total = 0
     html_rows = ""
     summary_txt = "TECHNODEL PC QUOTATION\n" + "="*25 + "\n"
     
-    # We look up values using the versioned keys
-    parts = [(f'c_{r_c}', 'CPU'), (f'm_{r_c}', 'Motherboard'), (f'g_{r_c}', 'GPU'), (f'p_{r_c}', 'PSU'), (f'ca_{r_c}', 'Case'), (f'co_{r_c}', 'Cooler')]
-    for k, label in parts:
-        val = st.session_state.get(k)
+    # Map logic to the keys used in selectboxes
+    parts_map = [("cpu_sb", "CPU"), ("mb_sb", "Motherboard"), ("gpu_sb", "GPU"), 
+                 ("psu_sb", "PSU"), ("case_sb", "Case"), ("cool_sb", "Cooler")]
+    
+    for key, label in parts_map:
+        val = st.session_state.get(key)
         if val and "Select" not in val:
             item_name, item_price = val.split(" - $")
             total += int(item_price.replace(",", ""))
@@ -180,14 +178,14 @@ if not raw_df.empty:
             summary_txt += f"{label}: {val}\n"
 
     for i in range(st.session_state.get('r_cnt', 1)):
-        v = st.session_state.get(f"r_{i}_{r_c}")
+        v = st.session_state.get(f"ram_{i}")
         if v and "Select" not in v:
             name, price = v.split(" - $")
             total += int(price.replace(",", "")); summary_txt += f"RAM: {v}\n"
             html_rows += f'<div class="build-item"><span>RAM {i+1}: {name}</span><b>${price}</b></div>'
             
     for i in range(st.session_state.get('s_cnt', 1)):
-        v = st.session_state.get(f"s_{i}_{r_c}")
+        v = st.session_state.get(f"storage_{i}")
         if v and "Select" not in v:
             name, price = v.split(" - $")
             total += int(price.replace(",", "")); summary_txt += f"Storage: {v}\n"
@@ -206,11 +204,12 @@ if not raw_df.empty:
                 pdf.cell(200, 10, text=line, ln=True)
             pdf.cell(200, 10, text=f"TOTAL: ${total:,}", ln=True)
             
-            pdf_output = pdf.output()
-            if isinstance(pdf_output, (bytearray, bytes)) == False:
-                pdf_output = bytes(pdf_output)
-            
-            st.download_button(label="📄 Download PDF", data=pdf_output, file_name="Technodel_Quote.pdf", mime="application/pdf", use_container_width=True)
+            pdf_bytes = pdf.output()
+            # Ensure output is in bytes format for the download button
+            if not isinstance(pdf_bytes, (bytes, bytearray)):
+                pdf_bytes = bytes(pdf_bytes)
+
+            st.download_button("📄 Download PDF", pdf_bytes, "Quote.pdf", "application/pdf", use_container_width=True)
             
         with c_wa:
             wa_msg = f"Order Build:\n{summary_txt}\nTotal: ${total:,}"
