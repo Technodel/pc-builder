@@ -1,164 +1,15 @@
 import streamlit as st
 import pandas as pd
-import requests
-from io import BytesIO
-import re
-
-import streamlit as st
-from fpdf import FPDF
-import urllib.parse
-import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 from fpdf import FPDF
 import urllib.parse
-import pandas as pd
+import re
 
-# --- PAGE CONFIG ---
-st.set_page_config(page_title="Technodel PC Builder", page_icon="🖥️", layout="wide")
-
-# --- 1. GOOGLE SHEETS CONNECTION ---
-# This connects to the sheet managed by your Sync Bot [cite: 2026-02-19]
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-def get_data():
-    # Fetching the 'HARDWARE' tab which contains our synced prices [cite: 2026-02-19]
-    return conn.read(worksheet="HARDWARE", ttl="5m")
-
-try:
-    df = get_data()
-except Exception as e:
-    st.error(f"Could not connect to Google Sheets: {e}")
-    st.stop()
-
-# --- 2. HELPERS: RESET, PDF, & WHATSAPP ---
-def reset_build():
-    """Clears all selections and restarts the app"""
-    for key in st.session_state.keys():
-        del st.session_state[key]
-    st.rerun()
-
-def generate_pdf(build_details, total_price):
-    """Generates a professional PDF file"""
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt="TECHNODEL CUSTOM PC QUOTE", ln=True, align='C')
-    pdf.ln(10)
-    
-    pdf.set_font("Arial", size=12)
-    for item in build_details:
-        pdf.cell(0, 10, txt=item, ln=True)
-    
-    pdf.ln(5)
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, txt=f"TOTAL PRICE: {total_price}", ln=True)
-    return pdf.output(dest='S').encode('latin-1')
-
-def get_whatsapp_link(build_text):
-    """Creates the link to your number +9613659872"""
-    phone = "9613659872"
-    msg = urllib.parse.quote(f"Hello Technodel! I'd like to order this PC build:\n\n{build_text}")
-    return f"https://wa.me/{phone}?text={msg}"
-
-# --- 3. THE BUILDER INTERFACE ---
-st.title("🖥️ Technodel PC Builder")
-st.write("Select your hardware components to generate a quote.")
-
-# Define categories based on your Excel structure
-categories = ["CPU", "MOTHERBOARD", "GPU", "RAM", "STORAGE", "CASE", "POWER SUPPLY"]
-selected_parts = []
-total_sum = 0
-
-# Create the selection UI
-for cat in categories:
-    # Look for the category name in Column A (index 0)
-    cat_df = df[df.iloc[:, 0].str.contains(cat, case=False, na=False)]
-    
-    # Column B (index 1) is Name, Column E (index 4) is Price
-    options = cat_df.iloc[:, 1].tolist()
-    
-    selected = st.selectbox(f"Select {cat}:", ["None"] + options, key=f"select_{cat}")
-    
-    if selected != "None":
-        # Find the price for the selected part
-        row = cat_df[cat_df.iloc[:, 1] == selected]
-        price_display = row.iloc[0, 4] # The $XX value from the Sync Bot
-        
-        selected_parts.append(f"{cat}: {selected} — {price_display}")
-        
-        # Calculate total by stripping the $ sign
-        try:
-            val_numeric = float(str(price_display).replace('$', '').replace(',', ''))
-            total_sum += val_numeric
-        except:
-            pass
-
-# --- 4. SUMMARY & ACTIONS ---
-st.divider()
-if selected_parts:
-    st.subheader("📋 Your Build Summary")
-    build_summary_text = "\n".join(selected_parts)
-    st.text(build_summary_text)
-    
-    total_display = f"${int(total_sum)}"
-    st.markdown(f"## Total Estimate: {total_display}")
-
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("🔄 Reset Build", use_container_width=True):
-            reset_build()
-
-    with col2:
-        pdf_bytes = generate_pdf(selected_parts, total_display)
-        st.download_button(
-            label="📄 Download PDF Quote",
-            data=pdf_bytes,
-            file_name="Technodel_PC_Quote.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
-
-    with col3:
-        wa_url = get_whatsapp_link(f"{build_summary_text}\n\nTotal: {total_display}")
-        st.link_button("🟢 Place Order via WhatsApp", wa_url, use_container_width=True)
-else:
-    st.info("Choose a component from the dropdowns above to begin your build.")
-# --- UI IMPLEMENTATION ---
-st.title("🖥️ Technodel PC Builder")
-
-# ... (Your existing st.connection and part selection logic here) ...
-
-# Assuming 'final_build_summary' is a string containing all selected parts
-final_build_summary = "CPU: i7 14700K\nGPU: RTX 4070\nTotal: $1500" 
-
-st.divider()
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    if st.button("🔄 Reset Build", on_click=reset_build, use_container_width=True):
-        st.toast("Build Reset!")
-
-with col2:
-    pdf_data = generate_pdf(final_build_summary)
-    st.download_button(
-        label="📄 Download PDF",
-        data=pdf_data,
-        file_name="Technodel_Build.pdf",
-        mime="application/pdf",
-        use_container_width=True
-    )
-
-with col3:
-    wa_link = send_whatsapp(final_build_summary)
-    st.link_button("🟢 Order via WhatsApp", wa_link, use_container_width=True)
 # --- 1. CONFIG & PREMIUM STYLING ---
-st.set_page_config(page_title="Technodel PC Builder", layout="wide")
+st.set_page_config(page_title="Technodel PC Builder", layout="wide", page_icon="🖥️")
 
 st.markdown("""
     <style>
-    /* Premium Summary Box */
     .build-box { 
         border: 1px solid rgba(0, 168, 232, 0.3); 
         padding: 25px; 
@@ -172,7 +23,6 @@ st.markdown("""
         justify-content: space-between;
         padding: 8px 0;
         border-bottom: 1px solid #eee;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
     .total-row {
         margin-top: 15px;
@@ -181,7 +31,6 @@ st.markdown("""
         color: #00a8e8;
         text-align: right;
     }
-    /* Sidebar Socials */
     .social-link {
         display: block;
         padding: 10px;
@@ -196,7 +45,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. LOGIC ---
+# --- 2. LOGIC & HELPERS ---
 def get_cpu_gen(cpu_name):
     match = re.search(r'(\d{4,5})', cpu_name)
     if match:
@@ -213,16 +62,37 @@ def is_compat(cpu_sel, mb_name):
         return str(gen) in allowed
     return True
 
-# --- 3. DATA ENGINE ---
+def reset_build():
+    """Wipes session state and restarts app"""
+    for key in st.session_state.keys():
+        del st.session_state[key]
+    st.rerun()
+
+def generate_real_pdf(html_rows_text, total_val):
+    """Generates a proper PDF document"""
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(200, 10, txt="TECHNODEL PC QUOTATION", ln=True, align='C')
+    pdf.ln(10)
+    pdf.set_font("Arial", size=12)
+    # Clean up build items for PDF
+    items = html_rows_text.replace('<span>', '').replace('</span>', '').replace('<b>', ' - ').replace('</b>', '').split('<div class="build-item">')
+    for item in items:
+        if item.strip():
+            pdf.cell(0, 10, txt=item.strip(), ln=True)
+    pdf.ln(10)
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, txt=f"TOTAL: ${total_val:,}", ln=True)
+    return pdf.output(dest='S').encode('latin-1')
+
+# --- 3. DATA ENGINE (MODERN CONNECTION) ---
+conn = st.connection("gsheets", type=GSheetsConnection)
+
 @st.cache_data(ttl=300)
 def load_all_data():
-    SHEET_ID = "1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4"
-    GID = "1309359556"
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}"
-    try:
-        res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
-        return pd.read_csv(BytesIO(res.content), header=None)
-    except: return pd.DataFrame()
+    # Targets the HARDWARE tab updated by your Sync Bot
+    return conn.read(worksheet="HARDWARE", header=None)
 
 def get_items_from_col(df, col_idx, start_title, stop_at_next_header=True, exclude_laptop=False):
     data = []
@@ -252,18 +122,17 @@ if not raw_df.empty:
     with st.sidebar:
         st.image("https://technodel.net/wp-content/uploads/2024/08/technodel-site-logo-01.webp", width=200)
         st.subheader("Connect with us")
-        # Social Media Links
         st.markdown("""
             <a href="https://instagram.com/technodel" class="social-link">📸 Instagram</a>
             <a href="https://facebook.com/technodel" class="social-link">📘 Facebook</a>
-            <a href="https://tiktok.com/@technodel" class="social-link">🎵 TikTok</a>
-            <a href="https://wa.me/96170449900" class="social-link">💬 WhatsApp</a>
+            <a href="https://wa.me/96170449900" class="social-link">💬 WhatsApp Admin</a>
         """, unsafe_allow_html=True)
         st.divider()
-        st.write("📞 03 659872 | 70 449900")
+        if st.button("🔄 Reset PC Build", on_click=reset_build, use_container_width=True):
+            pass
         st.info("🛡️ 1 Year Hardware Warranty\n\n🚀 Ready in 24h")
 
-    # Data Pulling
+    # Data Extraction
     cpu_df = get_items_from_col(raw_df, 0, 'PROCESSORS')
     coo_df = get_items_from_col(raw_df, 0, 'CPU COOLERS')
     cas_df = get_items_from_col(raw_df, 0, 'CASES')
@@ -279,65 +148,85 @@ if not raw_df.empty:
         cpu_c = st.selectbox("Processor", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in cpu_df.iterrows()], key="c")
         mb_l = mb_df[mb_df['ITEM'].apply(lambda x: is_compat(cpu_c, x))] if "Select" not in cpu_c else mb_df
         mb_c = st.selectbox("Motherboard", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in mb_l.iterrows()], key="m")
+        
         if "Select" not in mb_c:
             tech = "DDR5" if "DDR5" in mb_c.upper() else "DDR3" if "DDR3" in mb_c.upper() else "DDR4"
             ram_df = get_items_from_col(raw_df, 6, tech, exclude_laptop=True)
             if 'r_cnt' not in st.session_state: st.session_state.r_cnt = 1
             for i in range(st.session_state.r_cnt):
                 st.selectbox(f"{tech} RAM {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in ram_df.iterrows()], key=f"r_{i}")
-            if st.button("➕ RAM"): st.session_state.r_cnt += 1; st.rerun()
+            if st.button("➕ Add RAM"): st.session_state.r_cnt += 1; st.rerun()
 
     with col2:
         gpu_c = st.selectbox("GPU", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in gpu_df.iterrows()], key="g")
         psu_c = st.selectbox("PSU", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in psu_df.iterrows()], key="p")
         cas_c = st.selectbox("Case", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in cas_df.iterrows()], key="ca")
         coo_c = st.selectbox("Cooler", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in coo_df.iterrows()], key="co")
+        
         if 's_cnt' not in st.session_state: st.session_state.s_cnt = 1
         for i in range(st.session_state.s_cnt):
             st.selectbox(f"Storage {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in st_df.iterrows()], key=f"s_{i}")
-        if st.button("➕ Storage"): st.session_state.s_cnt += 1; st.rerun()
+        if st.button("➕ Add Storage"): st.session_state.s_cnt += 1; st.rerun()
 
-    # --- 5. ENHANCED PREVIEW ---
+    # --- 5. BUILD SUMMARY & EXPORT ---
     st.divider()
     total = 0
     html_rows = ""
-    summary_txt = "TECHNODEL PC QUOTATION\n" + "="*30 + "\n"
+    whatsapp_items = ""
     
-    parts = [('c', 'CPU'), ('m', 'Motherboard'), ('g', 'GPU'), ('p', 'PSU'), ('ca', 'Case'), ('co', 'Cooler')]
-    for k, label in parts:
+    # Process static parts
+    parts_map = [('c', 'CPU'), ('m', 'Motherboard'), ('g', 'GPU'), ('p', 'PSU'), ('ca', 'Case'), ('co', 'Cooler')]
+    for k, label in parts_map:
         val = st.session_state.get(k)
         if val and "Select" not in val:
-            item_name, item_price = val.split(" - $")
-            total += int(item_price.replace(",", ""))
-            html_rows += f'<div class="build-item"><span>{label}: {item_name}</span><b>${item_price}</b></div>'
-            summary_txt += f"{label}: {val}\n"
+            name, price = val.split(" - $")
+            total += int(price.replace(",", ""))
+            html_rows += f'<div class="build-item"><span>{label}: {name}</span><b>${price}</b></div>'
+            whatsapp_items += f"- {label}: {name} (${price})\n"
 
-    # Dynamic items
+    # Process dynamic RAM/Storage
     for i in range(st.session_state.get('r_cnt', 1)):
         v = st.session_state.get(f"r_{i}")
         if v and "Select" not in v:
             name, price = v.split(" - $")
-            total += int(price.replace(",", "")); summary_txt += f"RAM: {v}\n"
+            total += int(price.replace(",", ""))
             html_rows += f'<div class="build-item"><span>RAM {i+1}: {name}</span><b>${price}</b></div>'
+            whatsapp_items += f"- RAM: {name} (${price})\n"
+            
     for i in range(st.session_state.get('s_cnt', 1)):
         v = st.session_state.get(f"s_{i}")
         if v and "Select" not in v:
             name, price = v.split(" - $")
-            total += int(price.replace(",", "")); summary_txt += f"Storage: {v}\n"
+            total += int(price.replace(",", ""))
             html_rows += f'<div class="build-item"><span>Storage {i+1}: {name}</span><b>${price}</b></div>'
+            whatsapp_items += f"- Storage: {name} (${price})\n"
 
     if total > 0:
-        st.subheader("🖥️ Your Quotation")
+        st.subheader("🖥️ Build Quotation")
         st.markdown(f"""
             <div class="build-box">
                 {html_rows}
-                <div class="total-row">Total: ${total:,}</div>
+                <div class="total-row">Total Build: ${total:,}</div>
             </div>
         """, unsafe_allow_html=True)
         
-        col_dl, col_share = st.columns([1,1])
-        with col_dl:
-            st.download_button("💾 Download PDF (Text)", summary_txt + f"\nTOTAL: ${total:,}", file_name="Quotation.txt")
+        st.write(" ")
+        c_pdf, c_wa = st.columns(2)
+        
+        with c_pdf:
+            pdf_data = generate_real_pdf(html_rows, total)
+            st.download_button(
+                label="📄 Download PDF Quotation",
+                data=pdf_data,
+                file_name="Technodel_Quote.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+            
+        with c_wa:
+            wa_text = f"Hello Technodel! I want to order this build:\n\n{whatsapp_items}\nTotal: ${total:,}"
+            wa_url = f"https://wa.me/9613659872?text={urllib.parse.quote(wa_text)}"
+            st.link_button("🟢 Place Order via WhatsApp", wa_url, use_container_width=True)
 
-
-
+else:
+    st.error("Sheet data could not be loaded. Check your connection.")
