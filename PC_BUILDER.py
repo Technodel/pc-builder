@@ -189,3 +189,4 @@ if not raw_df.empty:
         col_dl, col_share = st.columns([1,1])
         with col_dl:
             st.download_button("💾 Download PDF (Text)", summary_txt + f"\nTOTAL: ${total:,}", file_name="Quotation.txt")
+
