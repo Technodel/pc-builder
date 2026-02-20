@@ -7,30 +7,35 @@ import os
 # --- 1. UI SETTINGS ---
 st.set_page_config(page_title="Technodel PC Builder 🖥️", layout="wide")
 
-# --- 2. THE DYNAMIC FILE FINDER ---
+# --- 2. DYNAMIC FILE & SHEET FINDER ---
 def get_data():
     try:
-        # Scan the directory for any Excel or Macro-Enabled Excel file
+        # Find any Excel file in your GitHub directory
         excel_files = glob.glob("*.xlsx") + glob.glob("*.xlsm")
-        
         if not excel_files:
-            st.error("⚠️ No .xlsx or .xlsm file found in the GitHub directory!")
+            st.error("⚠️ No .xlsx or .xlsm file found in GitHub folder!")
             return None
             
-        # Pick the first excel file found
         target_file = excel_files[0]
         
-        # Load the 'hardware' tab specifically [2026-02-16]
-        df = pd.read_excel(target_file, sheet_name="hardware")
+        # Load the workbook to see what sheets are inside
+        xl = pd.ExcelFile(target_file)
+        sheet_names = xl.sheet_names
         
-        # Yesterday's Logic: Start from Row 4 (skip 2 rows)
+        # Logic: Use 'hardware' if it exists, otherwise use the first available sheet
+        target_sheet = 'hardware' if 'hardware' in sheet_names else sheet_names[0]
+        
+        # Load the selected sheet
+        df = pd.read_excel(target_file, sheet_name=target_sheet)
+        
+        # Original Logic: Start from Row 4 (skipping first 2 junk rows)
         df = df.iloc[2:].copy()
         
-        # Filter for rows with Name and Price
+        # Remove empty rows in Name (Col B) and Price (Col C)
         df = df.dropna(subset=[df.columns[1], df.columns[2]]) 
         return df
     except Exception as e:
-        st.error(f"❌ Error loading file: {e}")
+        st.error(f"❌ Error: {e}")
         return None
 
 # --- 3. MAIN INTERFACE ---
@@ -49,21 +54,21 @@ if df is not None:
     
     for i, cat in enumerate(categories):
         with cols[i % 3]:
-            # Search Column A (Index 0) for the category name
+            # Filter Column A (Index 0) for the category
             cat_df = df[df.iloc[:, 0].str.contains(cat, case=False, na=False)]
             
             options = []
             for _, row in cat_df.iterrows():
                 try:
                     name = str(row.iloc[1])
-                    # Clean price formatting ($ and ,) [2026-02-16]
+                    # Clean price ($ and ,)
                     price_str = str(row.iloc[2]).replace('$', '').replace(',', '').strip()
                     price = int(round(float(price_str), 0))
                     options.append({"name": name, "price": price})
                 except: continue
             
             if options:
-                # Yesterday's Share Build auto-selection logic
+                # Share Build auto-fill
                 default_idx = 0
                 if cat in params:
                     for idx, opt in enumerate(options):
@@ -74,16 +79,12 @@ if df is not None:
                                    format_func=lambda x: f"{x['name']} (${x['price']})")
                 build[cat] = sel
                 total_price += sel['price']
-            else:
-                st.warning(f"Category '{cat}' not found in the file.")
 
     st.divider()
     st.header(f"Total Price: ${total_price}")
 
-    # --- 4. SHARE LINK GENERATION ---
+    # --- 4. SHARE LINK ---
     base_url = "https://technodel-builder.streamlit.app/?"
     query_string = urllib.parse.urlencode({k: v['name'] for k, v in build.items()})
-    
     st.subheader("🔗 Share Build Link")
-    st.info("Copy this link to send to your customer:")
     st.code(base_url + query_string)
