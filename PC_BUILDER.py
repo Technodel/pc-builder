@@ -4,7 +4,7 @@ import requests
 from io import BytesIO
 import re
 
-# --- 1. CONFIG & BRANDING ---
+# --- 1. CONFIG ---
 st.set_page_config(page_title="Technodel PC Builder", layout="wide")
 
 # --- 2. INTEL GEN LOGIC ---
@@ -24,7 +24,7 @@ def is_compat(cpu_sel, mb_name):
         return str(gen) in allowed
     return True
 
-# --- 3. THE "STACKED" DATA GRABBER ---
+# --- 3. THE COLUMN-AWARE GRABBER ---
 @st.cache_data(ttl=300)
 def load_all_data():
     SHEET_ID = "1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4"
@@ -35,54 +35,62 @@ def load_all_data():
         return pd.read_csv(BytesIO(res.content), header=None)
     except: return pd.DataFrame()
 
-def find_stacked_section(df, title, is_ram_sub=False):
-    """Finds a header and reads until the next category header or empty price."""
-    mask = df.apply(lambda s: s.astype(str).str.strip().str.upper() == title.upper())
-    matches = mask.stack()
-    if matches.empty: return pd.DataFrame()
-    
-    row_idx, col_idx = matches.index[0]
+def get_items_from_col(df, col_idx, start_title, stop_at_next_header=True):
+    """Finds title in a specific column and grabs items until next green header."""
     data = []
+    found = False
+    # Known green headers in your sheet to stop at
+    headers = ["PROCESSORS", "CPU COOLERS", "CASES", "MOTHER BOARDS", "INTERNAL STORAGE", "RAMS", "DDR3", "DDR4", "DDR5", "POWER SUPPLIES", "GRAPHICS CARDS", "UPS"]
     
-    # Major headers that indicate we should stop reading current section
-    stops = ["PROCESSORS", "CPU COOLERS", "CASES", "MOTHER BOARDS", "INTERNAL STORAGE", "RAMS", "POWER SUPPLIES", "GRAPHICS CARDS", "UPS"]
-    
-    for i in range(row_idx + 1, len(df)):
-        name = str(df.iloc[i, col_idx]).strip()
+    for i in range(len(df)):
+        cell_val = str(df.iloc[i, col_idx]).strip().upper()
         
-        # 1. Skip strictly empty cells
-        if not name or name.lower() == "nan" or name == "": continue
+        if not found:
+            if cell_val == start_title.upper():
+                found = True
+            continue
         
-        # 2. Stop if we hit a DIFFERENT major header (stacked below)
-        if name.upper() in stops and name.upper() != title.upper(): break
-        
-        # 3. RAM Sub-sections stop if they hit a different DDR title
-        if is_ram_sub and "DDR" in name.upper() and name.upper() != title.upper(): break
-
-        try:
-            price_raw = str(df.iloc[i, col_idx + 1]).replace('$','').replace(',','').strip()
-            # If price is missing or not a number, skip this row
-            if not price_raw or price_raw.lower() == "nan": continue
-            data.append({"ITEM": name, "PRICE": int(round(float(price_raw), 0))})
-        except: continue
-        
+        # If we are in the section
+        if found:
+            # Stop if we hit another header in the same column
+            if stop_at_next_header and cell_val in headers:
+                break
+            
+            name = str(df.iloc[i, col_idx]).strip()
+            # Skip empty rows or "nan"
+            if not name or name.lower() == "nan" or name == "":
+                continue
+                
+            try:
+                price_raw = str(df.iloc[i, col_idx + 1]).replace('$','').replace(',','').strip()
+                if price_raw and price_raw.lower() != "nan":
+                    data.append({"ITEM": name, "PRICE": int(round(float(price_raw), 0))})
+            except: continue
+            
     return pd.DataFrame(data)
 
-# --- 4. APP EXECUTION ---
+# --- 4. DATA PROCESSING ---
 raw_df = load_all_data()
 
 if not raw_df.empty:
-    # Hunt for every section precisely as shown in image_e33455.jpg
-    cpu_df = find_stacked_section(raw_df, 'PROCESSORS')
-    coo_df = find_stacked_section(raw_df, 'CPU COOLERS')
-    cas_df = find_stacked_section(raw_df, 'CASES')
-    mb_df  = find_stacked_section(raw_df, 'MOTHER BOARDS')
-    st_df  = find_stacked_section(raw_df, 'INTERNAL STORAGE')
-    psu_df = find_stacked_section(raw_df, 'POWER SUPPLIES')
-    gpu_df = find_stacked_section(raw_df, 'GRAPHICS CARDS')
-    ups_df = find_stacked_section(raw_df, 'UPS')
+    # Mapped exactly to your Google Sheet Columns
+    # Column A (0): PROCESSORS, CPU COOLERS, CASES
+    # Column D (3): MOTHER BOARDS, INTERNAL STORAGE
+    # Column G (6): RAMS (DDR3, DDR4, DDR5)
+    # Column J (9): POWER SUPPLIES, GRAPHICS CARDS, UPS
+    
+    cpu_df = get_items_from_col(raw_df, 0, 'PROCESSORS')
+    coo_df = get_items_from_col(raw_df, 0, 'CPU COOLERS')
+    cas_df = get_items_from_col(raw_df, 0, 'CASES')
+    
+    mb_df  = get_items_from_col(raw_df, 3, 'MOTHER BOARDS')
+    st_df  = get_items_from_col(raw_df, 3, 'INTERNAL STORAGE')
+    
+    psu_df = get_items_from_col(raw_df, 9, 'POWER SUPPLIES')
+    gpu_df = get_items_from_col(raw_df, 9, 'GRAPHICS CARDS')
+    ups_df = get_items_from_col(raw_df, 9, 'UPS')
 
-    st.title("Technodel Smart Builder")
+    st.title("Technodel PC Builder")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -90,14 +98,13 @@ if not raw_df.empty:
         mb_list = mb_df[mb_df['ITEM'].apply(lambda x: is_compat(cpu_choice, x))] if "Select" not in cpu_choice else mb_df
         mb_choice = st.selectbox("Motherboard", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in mb_list.iterrows()], key="m")
         
-        # RAM Logic using DDR3/4/5 headers
         if "Select" not in mb_choice:
             tech = "DDR5" if "DDR5" in mb_choice.upper() else "DDR3" if "DDR3" in mb_choice.upper() else "DDR4"
-            ram_df = find_stacked_section(raw_df, tech, is_ram_sub=True)
+            ram_df = get_items_from_col(raw_df, 6, tech)
             if 'r_cnt' not in st.session_state: st.session_state.r_cnt = 1
             for i in range(st.session_state.r_cnt):
                 st.selectbox(f"{tech} RAM {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in ram_df.iterrows()], key=f"r_{i}")
-            if st.button("➕ RAM"): st.session_state.r_cnt += 1; st.rerun()
+            if st.button("➕ Add RAM"): st.session_state.r_cnt += 1; st.rerun()
 
     with col2:
         st.selectbox("Graphics Card", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in gpu_df.iterrows()], key="g")
@@ -108,9 +115,9 @@ if not raw_df.empty:
         if 's_cnt' not in st.session_state: st.session_state.s_cnt = 1
         for i in range(st.session_state.s_cnt):
             st.selectbox(f"Storage {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in st_df.iterrows()], key=f"s_{i}")
-        if st.button("➕ Storage"): st.session_state.s_cnt += 1; st.rerun()
+        if st.button("➕ Add Storage"): st.session_state.s_cnt += 1; st.rerun()
 
-    # --- 5. TOTALS ---
+    # --- TOTALS ---
     total = 0
     for k in ['c', 'm', 'g', 'p', 'ca', 'co']:
         v = st.session_state.get(k)
@@ -118,10 +125,9 @@ if not raw_df.empty:
     
     for i in range(st.session_state.get('r_cnt', 1)):
         v = st.session_state.get(f"r_{i}"); total += int(v.split(" - $")[1].replace(",", "")) if v and "Select" not in v else 0
-        
     for i in range(st.session_state.get('s_cnt', 1)):
         v = st.session_state.get(f"s_{i}"); total += int(v.split(" - $")[1].replace(",", "")) if v and "Select" not in v else 0
 
     if total > 0:
         st.divider()
-        st.header(f"Total: ${total:,}")
+        st.header(f"Total Price: ${total:,}")
