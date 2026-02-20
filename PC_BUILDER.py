@@ -7,7 +7,7 @@ import urllib.parse
 # --- 1. PAGE CONFIG & LOGO ---
 st.set_page_config(page_title="Technodel Pro Builder", layout="wide", page_icon="💻")
 
-# Technodel Logo
+# Technodel Site Logo
 st.markdown(
     """
     <div style="text-align: left; padding-bottom: 5px;">
@@ -17,29 +17,19 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Custom Styling
-st.markdown("""
-    <style>
-    .stSelectbox { margin-bottom: -15px; }
-    .stButton button { width: 100%; border-radius: 5px; height: 2.2em; margin-top: 10px;}
-    .live-summary { background-color: #f0f8ff; padding: 20px; border-radius: 10px; border: 1px solid #00a8e8; margin-bottom: 20px; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- 2. THE CONNECTION (BOT LOGIC) ---
+# --- 2. THE CONNECTION (FIXES HTTP 400) ---
 @st.cache_data(ttl=600)
 def load_all_data():
     try:
-        # Create connection using secrets
+        # This uses the connection settings from your Streamlit Secrets
         conn = st.connection("gsheets", type=GSheetsConnection)
         
-        # Pull data from the "hardware" tab
-        # Note: spreadsheet URL is now stored in Secrets for security
+        # Load the "hardware" tab specifically
         df = conn.read(worksheet="hardware")
         return df
     except Exception as e:
         st.error(f"❌ Connection Error: {e}")
-        st.info("Check if your Secrets are configured and the Sheet is shared with the Service Account email.")
+        st.info("💡 Pro Tip: Make sure you shared the Google Sheet with the 'client_email' found in your Secrets!")
         return pd.DataFrame()
 
 def parse_section(df, keyword):
@@ -49,20 +39,27 @@ def parse_section(df, keyword):
     current_ram_tech = None
     
     for _, row in df.iterrows():
+        # Column A is index 0 (tags like table_cpu)
         val_a = str(row.iloc[0]).strip() if pd.notnull(row.iloc[0]) else ""
+        
         if not found_section:
             if f"table_{keyword.lower()}" in val_a.lower():
                 found_section = True
             continue
+        
+        # Stop at next table or empty row
         if not val_a or val_a == "nan" or "table_" in val_a.lower():
             break
+            
         if "DDR4" in val_a.upper(): current_ram_tech = "DDR4"
         if "DDR5" in val_a.upper(): current_ram_tech = "DDR5"
         
         try:
-            name = str(row.iloc[1])
+            name = str(row.iloc[1]) # Column B
+            # Clean price formatting
             price_str = str(row.iloc[2]).replace('$', '').replace(',', '').strip()
             clean_price = int(round(float(price_str), 0))
+            
             data.append({
                 "ITEM": name, 
                 "PRICE": clean_price,
@@ -71,23 +68,24 @@ def parse_section(df, keyword):
         except: continue
     return pd.DataFrame(data)
 
-# --- 3. LOGIC & UI ---
+# --- 3. DATA & UI ---
 raw_sheet = load_all_data()
 sections = ["cpu", "mb", "ram", "gpu", "case", "psu", "coo", "storage"]
 dfs = {s: parse_section(raw_sheet, s) for s in sections}
 
-# --- SELECTBOXES & COMPATIBILITY ---
+# --- SELECTBOXES ---
+st.title("Build Your PC")
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.title("Build Your PC")
-    # Example Selection
     cpu_list = ["Select CPU"] + dfs['cpu']['ITEM'].tolist() if not dfs['cpu'].empty else ["No Data"]
-    selected_cpu = st.selectbox("Step 1: Choose Processor", cpu_list, key="c")
+    selected_cpu = st.selectbox("Choose Processor", cpu_list, key="c")
+    
+    # [Add the rest of your selectboxes (m, g, r, etc.) here]
 
 # --- 4. SHARE BUILD LINK ---
-st.divider()
 if any(st.session_state.get(k) and "Select" not in str(st.session_state[k]) for k in ['c']):
+    st.divider()
     base_url = "https://technodel-builder.streamlit.app/?"
     params = {k: st.session_state[k] for k in ['c','m','g','p','ca','co'] if st.session_state.get(k) and "Select" not in str(st.session_state[k])}
     st.subheader("🔗 Share Build Link")
