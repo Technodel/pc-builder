@@ -11,6 +11,7 @@ st.set_page_config(page_title="Technodel PC Builder", layout="wide")
 
 st.markdown("""
     <style>
+    /* Premium Summary Box */
     .build-box { 
         border: 1px solid rgba(0, 168, 232, 0.3); 
         padding: 25px; 
@@ -24,6 +25,7 @@ st.markdown("""
         justify-content: space-between;
         padding: 8px 0;
         border-bottom: 1px solid #eee;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
     .total-row {
         margin-top: 15px;
@@ -32,6 +34,7 @@ st.markdown("""
         color: #00a8e8;
         text-align: right;
     }
+    /* Sidebar Socials */
     .social-link {
         display: block;
         padding: 10px;
@@ -46,7 +49,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. LOGIC & HELPERS ---
+# --- 2. LOGIC ---
 def get_cpu_gen(cpu_name):
     match = re.search(r'(\d{4,5})', cpu_name)
     if match:
@@ -63,13 +66,13 @@ def is_compat(cpu_sel, mb_name):
         return str(gen) in allowed
     return True
 
-# NEW: Reset Helper
+# --- NEW FEATURE: RESET LOGIC ---
 def reset_build():
     for key in st.session_state.keys():
         del st.session_state[key]
     st.rerun()
 
-# NEW: Real PDF Generator
+# --- NEW FEATURE: PDF GENERATOR ---
 def generate_real_pdf(summary_text, total_val):
     pdf = FPDF()
     pdf.add_page()
@@ -78,13 +81,14 @@ def generate_real_pdf(summary_text, total_val):
     pdf.ln(10)
     pdf.set_font("Arial", size=12)
     for line in summary_text.split('\n'):
-        pdf.cell(0, 10, txt=line, ln=True)
+        if line.strip():
+            pdf.cell(0, 10, txt=line, ln=True)
     pdf.ln(5)
     pdf.set_font("Arial", 'B', 14)
     pdf.cell(0, 10, txt=f"TOTAL: ${total_val:,}", ln=True)
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 3. DATA ENGINE (BACK TO YOUR ORIGINAL) ---
+# --- 3. DATA ENGINE ---
 @st.cache_data(ttl=300)
 def load_all_data():
     SHEET_ID = "1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4"
@@ -112,7 +116,6 @@ def get_items_from_col(df, col_idx, start_title, stop_at_next_header=True, exclu
             try:
                 price_raw = str(df.iloc[i, col_idx + 1]).replace('$','').replace(',','').strip()
                 if price_raw and price_raw.lower() != "nan":
-                    # Fix for the "disaster" decimals
                     data.append({"ITEM": name, "PRICE": int(round(float(price_raw), 0))})
             except: continue
     return pd.DataFrame(data)
@@ -127,15 +130,18 @@ if not raw_df.empty:
         st.markdown("""
             <a href="https://instagram.com/technodel" class="social-link">📸 Instagram</a>
             <a href="https://facebook.com/technodel" class="social-link">📘 Facebook</a>
+            <a href="https://tiktok.com/@technodel" class="social-link">🎵 TikTok</a>
             <a href="https://wa.me/96170449900" class="social-link">💬 WhatsApp Admin</a>
         """, unsafe_allow_html=True)
         st.divider()
-        # NEW: Reset Button
-        if st.button("🔄 Reset PC Build", on_click=reset_build, use_container_width=True):
+        # --- NEW FEATURE: RESET BUTTON IN SIDEBAR ---
+        if st.button("🔄 Reset Build", on_click=reset_build, use_container_width=True):
             pass
+        st.divider()
+        st.write("📞 03 659872 | 70 449900")
         st.info("🛡️ 1 Year Hardware Warranty\n\n🚀 Ready in 24h")
 
-    # Data Extraction (Same as your working bot)
+    # Data Pulling
     cpu_df = get_items_from_col(raw_df, 0, 'PROCESSORS')
     coo_df = get_items_from_col(raw_df, 0, 'CPU COOLERS')
     cas_df = get_items_from_col(raw_df, 0, 'CASES')
@@ -157,7 +163,7 @@ if not raw_df.empty:
             if 'r_cnt' not in st.session_state: st.session_state.r_cnt = 1
             for i in range(st.session_state.r_cnt):
                 st.selectbox(f"{tech} RAM {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in ram_df.iterrows()], key=f"r_{i}")
-            if st.button("➕ Add RAM"): st.session_state.r_cnt += 1; st.rerun()
+            if st.button("➕ RAM"): st.session_state.r_cnt += 1; st.rerun()
 
     with col2:
         gpu_c = st.selectbox("GPU", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in gpu_df.iterrows()], key="g")
@@ -167,24 +173,24 @@ if not raw_df.empty:
         if 's_cnt' not in st.session_state: st.session_state.s_cnt = 1
         for i in range(st.session_state.s_cnt):
             st.selectbox(f"Storage {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in st_df.iterrows()], key=f"s_{i}")
-        if st.button("➕ Add Storage"): st.session_state.s_cnt += 1; st.rerun()
+        if st.button("➕ Storage"): st.session_state.s_cnt += 1; st.rerun()
 
-    # --- 5. BUILD SUMMARY & EXPORT ---
+    # --- 5. ENHANCED PREVIEW ---
     st.divider()
     total = 0
     html_rows = ""
-    summary_txt = ""
+    summary_txt = "" 
     
-    parts_map = [('c', 'CPU'), ('m', 'Motherboard'), ('g', 'GPU'), ('p', 'PSU'), ('ca', 'Case'), ('co', 'Cooler')]
-    for k, label in parts_map:
+    parts = [('c', 'CPU'), ('m', 'Motherboard'), ('g', 'GPU'), ('p', 'PSU'), ('ca', 'Case'), ('co', 'Cooler')]
+    for k, label in parts:
         val = st.session_state.get(k)
         if val and "Select" not in val:
-            name, price = val.split(" - $")
-            total += int(price.replace(",", ""))
-            html_rows += f'<div class="build-item"><span>{label}: {name}</span><b>${price}</b></div>'
-            summary_txt += f"{label}: {name} (${price})\n"
+            item_name, item_price = val.split(" - $")
+            total += int(item_price.replace(",", ""))
+            html_rows += f'<div class="build-item"><span>{label}: {item_name}</span><b>${item_price}</b></div>'
+            summary_txt += f"{label}: {item_name} (${item_price})\n"
 
-    # Dynamic Items
+    # Dynamic items
     for i in range(st.session_state.get('r_cnt', 1)):
         v = st.session_state.get(f"r_{i}")
         if v and "Select" not in v:
@@ -207,14 +213,21 @@ if not raw_df.empty:
             </div>
         """, unsafe_allow_html=True)
         
+        # --- NEW FEATURE: ACTION BUTTONS ---
+        st.write(" ")
         col_pdf, col_wa = st.columns(2)
+        
         with col_pdf:
-            # NEW: Real PDF Download
-            pdf_data = generate_real_pdf(summary_txt, total)
-            st.download_button("📄 Download PDF Quote", pdf_data, file_name="Technodel_Quote.pdf", mime="application/pdf", use_container_width=True)
+            pdf_bytes = generate_real_pdf(summary_txt, total)
+            st.download_button(
+                label="📄 Download PDF Quotation",
+                data=pdf_bytes,
+                file_name="Technodel_Quote.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
             
         with col_wa:
-            # NEW: WhatsApp Order Button (+9613659872)
-            wa_msg = f"Hello Technodel! I'd like to order this build:\n\n{summary_txt}\nTOTAL: ${total:,}"
-            wa_url = f"https://wa.me/9613659872?text={urllib.parse.quote(wa_msg)}"
+            wa_full_msg = f"Hello Technodel! I'd like to order this build:\n\n{summary_txt}\nTOTAL: ${total:,}"
+            wa_url = f"https://wa.me/9613659872?text={urllib.parse.quote(wa_full_msg)}"
             st.link_button("🟢 Order via WhatsApp", wa_url, use_container_width=True)
