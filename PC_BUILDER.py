@@ -4,11 +4,7 @@ import requests
 from io import BytesIO
 import re
 import urllib.parse
-# Safe Import for Line 7
-try:
-    from fpdf import FPDF
-except ImportError:
-    st.error("Please ensure 'fpdf2' is in your requirements.txt")
+from fpdf import FPDF
 
 # --- 1. CONFIG & PREMIUM STYLING ---
 st.set_page_config(page_title="Technodel PC Builder", layout="wide")
@@ -115,10 +111,9 @@ if not raw_df.empty:
         """, unsafe_allow_html=True)
         st.divider()
         
-        # RESET FEATURE
+        # FIXED RESET BUTTON
         if st.button("🔄 Reset Build", use_container_width=True):
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
+            st.session_state.clear()
             st.rerun()
 
         st.divider()
@@ -194,15 +189,26 @@ if not raw_df.empty:
         
         c_pdf, c_wa = st.columns(2)
         with c_pdf:
-            # Generate PDF
+            # FIXED PDF BYTES OUTPUT
             pdf = FPDF()
             pdf.add_page()
             pdf.set_font("helvetica", size=12)
             for line in summary_txt.split('\n'):
                 pdf.cell(200, 10, text=line, ln=True)
             pdf.cell(200, 10, text=f"TOTAL: ${total:,}", ln=True)
-            pdf_bytes = pdf.output()
-            st.download_button("📄 Download PDF", pdf_bytes, "Technodel_Quote.pdf", "application/pdf", use_container_width=True)
+            
+            # This line converts the PDF object to a byte-string Streamlit can read
+            pdf_output = pdf.output()
+            if isinstance(pdf_output, bytearray):
+                pdf_output = bytes(pdf_output)
+            
+            st.download_button(
+                label="📄 Download PDF", 
+                data=pdf_output, 
+                file_name="Technodel_Quote.pdf", 
+                mime="application/pdf", 
+                use_container_width=True
+            )
             
         with c_wa:
             wa_msg = f"Order Build:\n{summary_txt}\nTotal: ${total:,}"
