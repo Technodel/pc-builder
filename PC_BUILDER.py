@@ -3,24 +3,46 @@ import pandas as pd
 import requests
 from io import BytesIO
 
-# --- 1. CONFIG & BRANDING ---
-st.set_page_config(page_title="Technodel PC Builder", layout="wide")
+# --- 1. PAGE CONFIG & BRANDING ---
+st.set_page_config(page_title="Technodel PC Builder", layout="wide", page_icon="🖥️")
 
-# Center the Logo at the top
-st.markdown("<h1 style='text-align: center;'>Technodel</h1>", unsafe_allow_html=True)
-# If you have a logo URL: st.image("YOUR_LOGO_URL", width=200) 
+# Custom CSS for Professional Look
+st.markdown("""
+    <style>
+    .main { background-color: #f5f7f9; }
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .social-icon { width: 25px; margin-right: 10px; vertical-align: middle; }
+    </style>
+    """, unsafe_allow_html=True)
 
-# Sidebar: Contact & Social Media
+# Logo and Header
+col_l, col_r = st.columns([1, 3])
+with col_l:
+    st.image("https://technodel.net/wp-content/uploads/2024/08/technodel-site-logo-01.webp", width=250)
+with col_r:
+    st.title("Technodel Pro PC Builder")
+    st.info("✅ 1 Year warranty on all parts | 🚀 Ready for pickup within 24 hours")
+
+# --- 2. SIDEBAR (CONTACT & SOCIALS) ---
 with st.sidebar:
-    st.title("Contact Us")
-    st.write("📞 Phone: +XXX XXXXXXXX")
-    st.write("📍 Location: Beirut, Lebanon")
+    st.header("📞 Contact Information")
+    st.write("03 659872 | 70 449900")
+    st.write("71 234002 | 07 345689")
+    st.write("📧 Adarwich@engineer.com")
+    st.write("🌐 [Technodel.net](https://technodel.net)")
+    
     st.divider()
-    st.write("📱 **Follow Us**")
-    st.markdown("[Facebook](https://facebook.com/technodel)")
-    st.markdown("[Instagram](https://instagram.com/technodel)")
+    st.header("📱 Our Social Media")
+    
+    # Social Media with Manual "Logos" (Unicode/Markdown)
+    st.markdown("🔵 [**Facebook**](https://fb.com/technodel)")
+    st.markdown("📸 [**Instagram**](https://instagram.com/technodel_computers)")
+    st.markdown("🎵 [**TikTok**](https://tiktok.com/@technodel_computer) *(Exclusive Deals!)*")
+    
+    st.divider()
+    st.caption("© 2026 Technodel Computers")
 
-# --- 2. DATA LOADER ---
+# --- 3. DATA & MULTI-COLUMN PARSING ---
 @st.cache_data(ttl=600)
 def load_all_data():
     SHEET_ID = "1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4"
@@ -33,30 +55,27 @@ def load_all_data():
         return pd.DataFrame()
     except: return pd.DataFrame()
 
-# --- 3. RESTORED PARSER ---
-def parse_by_title(df, title_keyword):
-    if df is None or df.empty: return pd.DataFrame()
-    data = []
-    found = False
-    all_titles = ["PROCESSORS", "MOTHER BOARDS", "INTERNAL STORAGE", "CPU COOLERS", 
-                  "CASES", "RAMS", "POWER SUPPLIES", "GRAPHICS CARDS", "UPS"]
+def find_component_data(df, title):
+    # Scans all columns (A, D, G, J) for the title
+    for col in df.columns:
+        match = df[df[col].astype(str).str.contains(title, case=False, na=False)]
+        if not match.empty:
+            start_row = match.index[0] + 1
+            data = []
+            for i in range(start_row, len(df)):
+                name = str(df.iloc[i, col]).strip()
+                if not name or name == "nan" or any(t in name.upper() for t in ["PRICE", "PROCESSOR"]):
+                    if len(data) > 0: break
+                    continue
+                try:
+                    price_raw = str(df.iloc[i, col + 1]).replace('$', '').replace(',', '').strip()
+                    price = int(round(float(price_raw), 0))
+                    data.append({"ITEM": name, "PRICE": price})
+                except: continue
+            return pd.DataFrame(data)
+    return pd.DataFrame()
 
-    for _, row in df.iterrows():
-        val_a = str(row.iloc[0]).strip().upper()
-        if not found:
-            if title_keyword.upper() in val_a: found = True
-            continue
-        if not val_a or val_a == "NAN" or any(t for t in all_titles if t == val_a and t != title_keyword.upper()):
-            if len(data) > 0: break
-            else: continue
-        try:
-            name = str(row.iloc[0])
-            price_raw = str(row.iloc[1]).replace('$', '').replace(',', '').strip()
-            data.append({"ITEM": name, "PRICE": int(round(float(price_raw), 0))})
-        except: continue
-    return pd.DataFrame(data)
-
-# --- 4. APP LOGIC ---
+# --- 4. THE BUILDER ---
 raw_df = load_all_data()
 
 if not raw_df.empty:
@@ -65,41 +84,45 @@ if not raw_df.empty:
         "COOLER": "CPU COOLERS", "CASE": "CASES", "RAM": "RAMS", 
         "PSU": "POWER SUPPLIES", "GPU": "GRAPHICS CARDS", "UPS": "UPS"
     }
-    dfs = {k: parse_by_title(raw_df, v) for k, v in cats.items()}
     
-    # Selection Interface
+    dfs = {k: find_component_data(raw_df, v) for k, v in cats.items()}
     choices = {}
-    col1, col2 = st.columns(2)
+    
+    # Grid Layout for Components
+    st.subheader("🛠️ Select Your Components")
+    c1, c2, c3 = st.columns(3)
+    
+    # Distribute components across 3 columns
     for i, (key, title) in enumerate(cats.items()):
-        target_col = col1 if i % 2 == 0 else col2
+        target_col = [c1, c2, c3][i % 3]
         with target_col:
             if not dfs[key].empty:
-                item_list = ["Select " + key] + dfs[key]['ITEM'].tolist()
-                selected = st.selectbox(f"Choose {title}", item_list, key=key)
-                if "Select" not in selected:
-                    price = dfs[key][dfs[key]['ITEM'] == selected]['PRICE'].values[0]
-                    choices[key] = {"name": selected, "price": price}
+                items = ["Select " + title] + dfs[key]['ITEM'].tolist()
+                sel = st.selectbox(f"{title}", items, key=key)
+                if "Select" not in sel:
+                    price = dfs[key][dfs[key]['ITEM'] == sel]['PRICE'].values[0]
+                    choices[key] = {"name": sel, "price": price}
 
-    # --- 5. SUMMARY & DOWNLOAD ---
+    # --- 5. BUILD SUMMARY & QUOTE ---
     if choices:
         st.divider()
-        st.subheader("📋 Build Summary")
-        total = sum(item['price'] for item in choices.values())
+        st.subheader("📊 Your PC Build Summary")
         
-        # Create Text Summary for Download
-        summary_text = f"TECHNODEL PC BUILD\nTotal: ${total:,}\n" + "-"*20 + "\n"
+        summary_list = []
         for k, v in choices.items():
-            st.write(f"**{k}:** {v['name']} - ${v['price']}")
-            summary_text += f"{k}: {v['name']} - ${v['price']}\n"
-
-        st.metric("Total Price", f"${total:,}")
+            summary_list.append({"Component": k, "Description": v['name'], "Price": f"${v['price']:,}"})
         
-        # Download Button
-        st.download_button(
-            label="📩 Download Quote (Text)",
-            data=summary_text,
-            file_name="Technodel_Build.txt",
-            mime="text/plain"
-        )
+        st.table(pd.DataFrame(summary_list))
+        
+        total = sum(item['price'] for item in choices.values())
+        st.metric("Estimated Total", f"${total:,}")
+        
+        # Download Logic
+        quote_text = f"TECHNODEL PC QUOTE\nWarranty: 1 Year\nReady within 24h\n\n"
+        for k, v in choices.items():
+            quote_text += f"{k}: {v['name']} (${v['price']})\n"
+        quote_text += f"\nTOTAL: ${total:,}\n\nContact: 03 659872"
+        
+        st.download_button("💾 Download Quotation", quote_text, "Technodel_Quote.txt")
 else:
-    st.error("Sheet Load Error. Please ensure Column A has 'PROCESSORS', 'RAMS', etc.")
+    st.error("Failed to sync with Google Sheets. Please check your data source.")
