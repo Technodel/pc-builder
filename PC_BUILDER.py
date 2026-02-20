@@ -121,7 +121,7 @@ if not raw_df.empty:
             <a href="https://instagram.com/technodel" class="social-link">📸 Instagram</a>
             <a href="https://facebook.com/technodel" class="social-link">📘 Facebook</a>
             <a href="https://tiktok.com/@technodel" class="social-link">🎵 TikTok</a>
-            <a href="https://wa.me/96170449900" class="social-link">💬 WhatsApp Admin</a>
+            <a href="https://wa.me/9613659872" class="social-link">💬 WhatsApp Admin</a>
         """, unsafe_allow_html=True)
         st.divider()
         
@@ -216,3 +216,4 @@ if not raw_df.empty:
             wa_msg = f"Order Build:\n{txt_content}"
             wa_url = f"https://wa.me/96170449900?text={urllib.parse.quote(wa_msg)}"
             st.link_button("🟢 WhatsApp Order", wa_url, use_container_width=True)
+
