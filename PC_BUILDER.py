@@ -4,19 +4,17 @@ import requests
 from io import BytesIO
 import re
 import urllib.parse
-# Line 7 is here:
+# Safe Import for Line 7
 try:
     from fpdf import FPDF
-    FPDF_AVAILABLE = True
 except ImportError:
-    FPDF_AVAILABLE = False
+    st.error("Please ensure 'fpdf2' is in your requirements.txt")
 
 # --- 1. CONFIG & PREMIUM STYLING ---
 st.set_page_config(page_title="Technodel PC Builder", layout="wide")
 
 st.markdown("""
     <style>
-    /* Premium Summary Box */
     .build-box { 
         border: 1px solid rgba(0, 168, 232, 0.3); 
         padding: 25px; 
@@ -39,7 +37,6 @@ st.markdown("""
         color: #00a8e8;
         text-align: right;
     }
-    /* Sidebar Socials */
     .social-link {
         display: block;
         padding: 10px;
@@ -118,12 +115,12 @@ if not raw_df.empty:
         """, unsafe_allow_html=True)
         st.divider()
         
-        # RESET BUTTON
+        # RESET FEATURE
         if st.button("🔄 Reset Build", use_container_width=True):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
-            
+
         st.divider()
         st.write("📞 03 659872 | 70 449900")
         st.info("🛡️ 1 Year Hardware Warranty\n\n🚀 Ready in 24h")
@@ -162,7 +159,7 @@ if not raw_df.empty:
             st.selectbox(f"Storage {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in st_df.iterrows()], key=f"s_{i}")
         if st.button("➕ Storage"): st.session_state.s_cnt += 1; st.rerun()
 
-    # --- 5. ENHANCED PREVIEW ---
+    # --- 5. SUMMARY & EXPORT ---
     st.divider()
     total = 0
     html_rows = ""
@@ -195,23 +192,19 @@ if not raw_df.empty:
         st.subheader("🖥️ Your Quotation")
         st.markdown(f'<div class="build-box">{html_rows}<div class="total-row">Total: ${total:,}</div></div>', unsafe_allow_html=True)
         
-        c1, c2 = st.columns(2)
-        with c1:
-            if FPDF_AVAILABLE:
-                try:
-                    pdf = FPDF()
-                    pdf.add_page()
-                    pdf.set_font("Arial", size=12)
-                    for line in summary_txt.split('\n'):
-                        pdf.cell(200, 10, txt=line.encode('latin-1', 'replace').decode('latin-1'), ln=True)
-                    pdf.cell(200, 10, txt=f"TOTAL: ${total:,}", ln=True)
-                    pdf_bytes = pdf.output(dest='S').encode('latin-1')
-                    st.download_button("📄 Download PDF Quote", pdf_bytes, "Quote.pdf", "application/pdf", use_container_width=True)
-                except:
-                    st.error("Error generating PDF file.")
-            else:
-                st.warning("Install 'fpdf' in requirements.txt to enable PDF.")
+        c_pdf, c_wa = st.columns(2)
+        with c_pdf:
+            # Generate PDF
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("helvetica", size=12)
+            for line in summary_txt.split('\n'):
+                pdf.cell(200, 10, text=line, ln=True)
+            pdf.cell(200, 10, text=f"TOTAL: ${total:,}", ln=True)
+            pdf_bytes = pdf.output()
+            st.download_button("📄 Download PDF", pdf_bytes, "Technodel_Quote.pdf", "application/pdf", use_container_width=True)
             
-        with c2:
-            wa_url = f"https://wa.me/9613659872?text={urllib.parse.quote('Order Build:\n' + summary_txt + 'Total: $' + str(total))}"
-            st.link_button("🟢 Order via WhatsApp", wa_url, use_container_width=True)
+        with c_wa:
+            wa_msg = f"Order Build:\n{summary_txt}\nTotal: ${total:,}"
+            wa_url = f"https://wa.me/9613659872?text={urllib.parse.quote(wa_msg)}"
+            st.link_button("🟢 WhatsApp Order", wa_url, use_container_width=True)
