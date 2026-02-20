@@ -7,9 +7,9 @@ import re
 # --- 1. CONFIG & BRANDING ---
 st.set_page_config(page_title="Technodel PC Builder", layout="wide")
 
-# --- 2. THE OFFLINE LOGIC (REPRODUCED EXACTLY) ---
+# --- 2. OFFLINE LOGIC (REPRODUCED EXACTLY) ---
 def get_cpu_gen(cpu_name):
-    """Detects Gen: 5 digits (12700) -> 12, 4 digits (6500) -> 6"""
+    # Logic: 5 digits = first 2 (12th gen), 4 digits = first 1 (6th gen)
     match = re.search(r'(\d{4,5})', cpu_name)
     if match:
         val = match.group(1)
@@ -17,7 +17,7 @@ def get_cpu_gen(cpu_name):
     return None
 
 def is_compat(cpu_sel, mb_name):
-    """Matches CPU gen to parentheses in MB name: e.g. 'H610 (12,13,14)'"""
+    # Matches CPU gen to parentheses in MB name: e.g. 'H610 (12,13,14)'
     if "Select" in cpu_sel: return True
     gen = get_cpu_gen(cpu_sel)
     match = re.search(r'\((.*?)\)', mb_name)
@@ -26,7 +26,7 @@ def is_compat(cpu_sel, mb_name):
         return str(gen) in allowed_gens
     return True
 
-# --- 3. OPTIMIZED DATA LOADER (FAST SCANNING) ---
+# --- 3. OPTIMIZED DATA LOADER ---
 @st.cache_data(ttl=300)
 def load_all_data():
     SHEET_ID = "1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4"
@@ -35,21 +35,21 @@ def load_all_data():
     try:
         res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
         return pd.read_csv(BytesIO(res.content), header=None)
-    except:
-        return pd.DataFrame()
+    except: return pd.DataFrame()
 
 def find_component_data(df, title):
-    """Finds the section header and grabs the list until the next header."""
+    """Finds exact section header and grabs name + price below it."""
+    # Find header coordinates
     mask = df.apply(lambda s: s.astype(str).str.contains(rf"^{title}$", case=False, na=False))
     matches = mask.stack()
     if not matches.empty:
         row_idx, col_idx = matches.index[0]
         data = []
-        # Start reading from the row below the header
+        # Start reading below header
         for i in range(row_idx + 1, len(df)):
             name = str(df.iloc[i, col_idx]).strip()
-            # Stop if we hit an empty cell or a new category header
-            if not name or name == "nan" or "PRICE" in name.upper():
+            # Stop if cell is empty or hits another major category header
+            if not name or name == "nan" or any(h in name.upper() for h in ["PROCESSORS", "MOTHER", "DDR", "PRICE"]):
                 if len(data) > 0: break
                 continue
             try:
@@ -63,7 +63,6 @@ def find_component_data(df, title):
 raw_df = load_all_data()
 
 if not raw_df.empty:
-    # Load Primary Categories
     cats = {
         'cpu': 'PROCESSORS', 'mb': 'MOTHER BOARDS', 'gpu': 'GRAPHICS CARDS',
         'psu': 'POWER SUPPLIES', 'case': 'CASES', 'coo': 'CPU COOLERS',
@@ -71,7 +70,7 @@ if not raw_df.empty:
     }
     dfs = {k: find_component_data(raw_df, v) for k, v in cats.items()}
     
-    # Load Separate RAM Tables (FIXED: Pulls from their own headers)
+    # Pre-load ALL 3 RAM Tables
     ram_tables = {
         "DDR3": find_component_data(raw_df, "DDR3"),
         "DDR4": find_component_data(raw_df, "DDR4"),
@@ -79,14 +78,12 @@ if not raw_df.empty:
     }
 
     # --- 5. UI LAYOUT ---
-    st.title("Technodel Smart Builder")
+    st.header("Technodel Online Builder")
     
     col1, col2 = st.columns(2)
-    
     with col1:
         cpu_choice = st.selectbox("Processor", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in dfs['cpu'].iterrows()], key="c")
         
-        # Filter Motherboards based on CPU Generation
         mb_options = dfs['mb']
         if "Select" not in cpu_choice:
             mb_options = mb_options[mb_options['ITEM'].apply(lambda x: is_compat(cpu_choice, x))]
@@ -94,8 +91,9 @@ if not raw_df.empty:
         mb_choice = st.selectbox("Motherboard", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in mb_options.iterrows()], key="m")
         
         st.divider()
-        # RAM Tech Filter: Only shows DDR5 if board is DDR5, etc.
+        # DYNAMIC RAM FILTERING
         if "Select" not in mb_choice:
+            # Determine RAM tech from board name
             tech = "DDR5" if "DDR5" in mb_choice.upper() else "DDR3" if "DDR3" in mb_choice.upper() else "DDR4"
             active_ram_df = ram_tables.get(tech, pd.DataFrame())
             
@@ -104,8 +102,7 @@ if not raw_df.empty:
                 st.selectbox(f"{tech} RAM {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in active_ram_df.iterrows()], key=f"ram_{i}")
             
             if st.button("➕ Add RAM"):
-                st.session_state.ram_count += 1
-                st.rerun()
+                st.session_state.ram_count += 1; st.rerun()
 
     with col2:
         gpu_choice = st.selectbox("GPU", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in dfs['gpu'].iterrows()], key="g")
@@ -116,45 +113,34 @@ if not raw_df.empty:
         if 'storage_count' not in st.session_state: st.session_state.storage_count = 1
         for i in range(st.session_state.storage_count):
             st.selectbox(f"Storage {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in dfs['storage'].iterrows()], key=f"store_{i}")
-        
         if st.button("➕ Add Storage"):
-            st.session_state.storage_count += 1
-            st.rerun()
+            st.session_state.storage_count += 1; st.rerun()
 
-    # --- 6. TOTALS & SUMMARY ---
+    # --- 6. REAL-TIME TOTALS & PREVIEW ---
     st.divider()
     total = 0
-    build_summary = []
+    preview_items = []
 
-    # Standard Components
+    # Compile parts from session state
     for label, key in [('CPU', 'c'), ('Motherboard', 'm'), ('GPU', 'g'), ('PSU', 'p'), ('Case', 'ca')]:
         val = st.session_state.get(key)
         if val and "Select" not in val:
             total += int(val.split(" - $")[1].replace(",", ""))
-            build_summary.append(f"**{label}:** {val}")
+            preview_items.append(f"**{label}:** {val}")
 
-    # Dynamic Components (RAM/Storage)
     for i in range(st.session_state.get('ram_count', 1)):
         val = st.session_state.get(f"ram_{i}")
         if val and "Select" not in val:
             total += int(val.split(" - $")[1].replace(",", ""))
-            build_summary.append(f"**RAM {i+1}:** {val}")
+            preview_items.append(f"**RAM {i+1}:** {val}")
 
     for i in range(st.session_state.get('storage_count', 1)):
         val = st.session_state.get(f"store_{i}")
         if val and "Select" not in val:
             total += int(val.split(" - $")[1].replace(",", ""))
-            build_summary.append(f"**Storage {i+1}:** {val}")
+            preview_items.append(f"**Storage {i+1}:** {val}")
 
-    if build_summary:
-        st.subheader("🛒 Real-Time Build Summary")
-        for item in build_summary:
-            st.write(item)
+    if preview_items:
+        st.subheader("🛒 Build Summary")
+        for item in preview_items: st.write(item)
         st.header(f"TOTAL: ${total:,}")
-        
-        # Download Option
-        full_text = "TECHNODEL BUILD\n\n" + "\n".join(build_summary) + f"\n\nTOTAL: ${total:,}"
-        st.download_button("💾 Download Quote", full_text, "Build_Quote.txt")
-
-else:
-    st.error("Could not sync with Google Sheets. Please check your internet connection.")
