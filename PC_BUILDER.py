@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 from io import BytesIO
 
-# --- 1. DATA LOADER (Stays the same) ---
+# --- 1. DATA LOADER ---
 @st.cache_data(ttl=600)
 def load_all_data():
     SHEET_ID = "1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4"
@@ -18,75 +18,71 @@ def load_all_data():
     except:
         return pd.DataFrame()
 
-# --- 2. HEADER-BASED PARSER (The Bot's Brain) ---
+# --- 2. THE BOT'S BRAIN (RESTORED) ---
 def parse_by_title(df, title_keyword):
     if df is None or df.empty: return pd.DataFrame()
     data = []
     found = False
-    
-    # List of all your category titles to know when one section ends and another begins
+    # List of your actual titles from the Excel
     all_titles = ["PROCESSORS", "MOTHER BOARDS", "INTERNAL STORAGE", "CPU COOLERS", 
                   "CASES", "RAMS", "POWER SUPPLIES", "GRAPHICS CARDS", "UPS"]
 
     for _, row in df.iterrows():
         val_a = str(row.iloc[0]).strip().upper()
-        
         if not found:
             if title_keyword.upper() in val_a:
                 found = True
             continue
-        
-        # Stop logic: If we hit a DIFFERENT category title or an empty row
-        if not val_a or val_a == "NAN" or any(t for t in all_titles if t in val_a and t != title_keyword.upper()):
+        # Stop at next title or empty cell
+        if not val_a or val_a == "NAN" or any(t for t in all_titles if t == val_a and t != title_keyword.upper()):
             if len(data) > 0: break
             else: continue
-            
         try:
             name = str(row.iloc[0]) # Column A
             price_raw = str(row.iloc[1]).replace('$', '').replace(',', '').strip() # Column B
             data.append({"ITEM": name, "PRICE": int(round(float(price_raw), 0))})
-        except:
-            continue
+        except: continue
     return pd.DataFrame(data)
 
 # --- 3. UI EXECUTION ---
 raw_df = load_all_data()
 
 if not raw_df.empty:
-    # 4. BOT IDENTIFIES ALL COMPONENTS
-    components = {
-        "CPU": "PROCESSORS",
-        "MB": "MOTHER BOARDS",
-        "STORAGE": "INTERNAL STORAGE",
-        "COOLER": "CPU COOLERS",
-        "CASE": "CASES",
-        "RAM": "RAMS",
-        "PSU": "POWER SUPPLIES",
-        "GPU": "GRAPHICS CARDS",
-        "UPS": "UPS"
+    # 4. MAP TITLES TO KEYS
+    cats = {
+        "CPU": "PROCESSORS", "MB": "MOTHER BOARDS", "STORAGE": "INTERNAL STORAGE",
+        "COOLER": "CPU COOLERS", "CASE": "CASES", "RAM": "RAMS", 
+        "PSU": "POWER SUPPLIES", "GPU": "GRAPHICS CARDS", "UPS": "UPS"
     }
+    dfs = {k: parse_by_title(raw_df, v) for k, v in cats.items()}
     
-    # Create DataFrames for every category automatically
-    dfs = {key: parse_by_title(raw_df, title) for key, title in components.items()}
-
-    st.success("✅ Success! All categories identified from your Excel.")
-
-    # 5. DISPLAY SELECT BOXES
     st.title("Technodel PC Builder")
     
+    # 5. BUILDER LOGIC
+    choices = {}
     col1, col2 = st.columns(2)
     
-    with col1:
-        cpu = st.selectbox("Select Processor", ["Select CPU"] + dfs['CPU']['ITEM'].tolist())
-        gpu = st.selectbox("Select Graphics Card", ["Select GPU"] + dfs['GPU']['ITEM'].tolist())
-        ram = st.selectbox("Select RAM", ["Select RAM"] + dfs['RAM']['ITEM'].tolist())
-        mb = st.selectbox("Select Motherboard", ["Select MB"] + dfs['MB']['ITEM'].tolist())
+    for i, (key, title) in enumerate(cats.items()):
+        target_col = col1 if i % 2 == 0 else col2
+        with target_col:
+            if not dfs[key].empty:
+                # Using 'ITEM' key safely
+                item_list = ["Select " + key] + dfs[key]['ITEM'].tolist()
+                selected = st.selectbox(f"Choose {title}", item_list, key=key)
+                
+                if "Select" not in selected:
+                    price = dfs[key][dfs[key]['ITEM'] == selected]['PRICE'].values[0]
+                    choices[key] = {"name": selected, "price": price}
     
-    with col2:
-        storage = st.selectbox("Select Storage", ["Select Storage"] + dfs['STORAGE']['ITEM'].tolist())
-        cooler = st.selectbox("Select Cooler", ["Select Cooler"] + dfs['COOLER']['ITEM'].tolist())
-        psu = st.selectbox("Select Power Supply", ["Select PSU"] + dfs['PSU']['ITEM'].tolist())
-        case = st.selectbox("Select Case", ["Select Case"] + dfs['CASE']['ITEM'].tolist())
+    # 6. TOTAL PRICE CALCULATION
+    st.divider()
+    total = sum(item['price'] for item in choices.values())
+    st.metric(label="Total Build Price", value=f"${total:,}")
+
+    if choices:
+        with st.expander("View Build Summary"):
+            for k, v in choices.items():
+                st.write(f"**{k}:** {v['name']} - ${v['price']}")
 
 else:
-    st.error("Could not connect to the Google Sheet. Check your GID or Sharing settings.")
+    st.error("Connection Failed. Ensure Sheet is 'Published to Web'.")
