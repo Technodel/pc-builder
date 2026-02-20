@@ -4,43 +4,58 @@ import requests
 from io import BytesIO
 import urllib.parse
 
-# --- 1. CONFIG ---
+# --- 1. LOGO & CONFIG ---
 st.set_page_config(page_title="Technodel Pro Builder", layout="wide")
 
-# --- 2. DATA LOADER (THE FIX) ---
+st.markdown(
+    """
+    <div style="text-align: left; padding-bottom: 5px;">
+        <img src="https://technodel.net/wp-content/uploads/2024/08/technodel-site-logo-01.webp" width="280">
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# --- 2. THE CONNECTION (FIXES HTTP 400) ---
 @st.cache_data(ttl=600)
-def load_data_no_email():
-    # Replace with your actual Sheet ID
+def load_data_from_public_sheet():
+    # Your Sheet ID from the screenshot
     SHEET_ID = "1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4"
-    # Ensure GID matches your 'hardware' tab (0 = first tab)
-    URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
+    # The 'hardware' tab is the first tab, so gid=0
+    csv_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
     
     try:
-        # The 'User-Agent' header is what kills the 400 Error
+        # This header 'tricks' Google into thinking a browser is visiting
         headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(URL, headers=headers)
+        response = requests.get(csv_url, headers=headers)
         
         if response.status_code == 200:
-            return pd.read_csv(BytesIO(response.content))
+            df = pd.read_csv(BytesIO(response.content))
+            return df
         else:
-            st.error(f"❌ Google rejected request: Status {response.status_code}")
+            st.error(f"❌ Google rejected the request (Status {response.status_code})")
             return pd.DataFrame()
     except Exception as e:
         st.error(f"❌ Connection Error: {e}")
         return pd.DataFrame()
 
-# --- 3. UI LOGIC ---
-df = load_data_no_email()
+# --- 3. DATA PROCESSING ---
+raw_df = load_data_from_public_sheet()
 
-if df.empty:
-    st.warning("⚠️ Still blocked. Did you click 'Publish to the web' in Google Sheets?")
+if raw_df.empty:
+    st.warning("⚠️ Still blocked. Make sure 'Publish to web' is active.")
 else:
-    st.success("✅ Connection Fixed!")
-    # Your parsing logic for 'table_cpu' etc. goes here
+    st.success("✅ Connected successfully to 'hardware' tab!")
     
-# --- 4. SHARE BUILD LINK (Your Project Goal) ---
-# [cite: 2026-02-19]
-if st.button("Generate Share Link"):
+    # Your specific parsing logic for table_cpu, table_gpu, etc.
+    # [Insert your parsing code here]
+
+# --- 4. SHARE BUILD LINK ---
+# This fulfills your requirement for technodel-builder.streamlit.app [cite: 2026-02-19]
+st.divider()
+if not raw_df.empty:
+    st.subheader("🔗 Share Build Link")
     base_url = "https://technodel-builder.streamlit.app/?"
-    # Add your selection logic here
-    st.code(base_url + "c=Intel+i9")
+    # Example logic: add your actual selection variables here
+    params = {"build": "custom"} 
+    st.code(base_url + urllib.parse.urlencode(params))
