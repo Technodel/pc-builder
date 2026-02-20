@@ -105,7 +105,6 @@ if not raw_df.empty:
     with st.sidebar:
         st.image("https://technodel.net/wp-content/uploads/2024/08/technodel-site-logo-01.webp", width=200)
         st.subheader("Connect with us")
-        # Social Media Links
         st.markdown("""
             <a href="https://instagram.com/technodel" class="social-link">📸 Instagram</a>
             <a href="https://facebook.com/technodel" class="social-link">📘 Facebook</a>
@@ -114,9 +113,8 @@ if not raw_df.empty:
         """, unsafe_allow_html=True)
         st.divider()
         
-        # RESET BUTTON
         if st.button("🔄 Reset Build", use_container_width=True):
-            for key in st.session_state.keys():
+            for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
             
@@ -162,7 +160,7 @@ if not raw_df.empty:
     st.divider()
     total = 0
     html_rows = ""
-    summary_txt = "TECHNODEL PC QUOTATION\n" + "="*30 + "\n"
+    summary_txt = "TECHNODEL PC QUOTATION\n" + "="*25 + "\n"
     
     parts = [('c', 'CPU'), ('m', 'Motherboard'), ('g', 'GPU'), ('p', 'PSU'), ('ca', 'Case'), ('co', 'Cooler')]
     for k, label in parts:
@@ -173,13 +171,13 @@ if not raw_df.empty:
             html_rows += f'<div class="build-item"><span>{label}: {item_name}</span><b>${item_price}</b></div>'
             summary_txt += f"{label}: {val}\n"
 
-    # Dynamic items
     for i in range(st.session_state.get('r_cnt', 1)):
         v = st.session_state.get(f"r_{i}")
         if v and "Select" not in v:
             name, price = v.split(" - $")
             total += int(price.replace(",", "")); summary_txt += f"RAM: {v}\n"
             html_rows += f'<div class="build-item"><span>RAM {i+1}: {name}</span><b>${price}</b></div>'
+            
     for i in range(st.session_state.get('s_cnt', 1)):
         v = st.session_state.get(f"s_{i}")
         if v and "Select" not in v:
@@ -189,35 +187,22 @@ if not raw_df.empty:
 
     if total > 0:
         st.subheader("🖥️ Your Quotation")
-        st.markdown(f"""
-            <div class="build-box">
-                {html_rows}
-                <div class="total-row">Total: ${total:,}</div>
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="build-box">{html_rows}<div class="total-row">Total: ${total:,}</div></div>', unsafe_allow_html=True)
         
-        col_pdf, col_wa = st.columns(2)
-        
-        with col_pdf:
-            # REAL PDF GENERATION
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_font("Arial", size=12)
-            for line in summary_txt.split('\n'):
-                pdf.cell(200, 10, txt=line, ln=True)
-            pdf.cell(200, 10, txt=f"TOTAL: ${total:,}", ln=True)
-            pdf_output = pdf.output(dest='S').encode('latin-1')
+        c1, c2 = st.columns(2)
+        with c1:
+            try:
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", size=12)
+                for line in summary_txt.split('\n'):
+                    pdf.cell(200, 10, txt=line.encode('latin-1', 'replace').decode('latin-1'), ln=True)
+                pdf.cell(200, 10, txt=f"TOTAL: ${total:,}", ln=True)
+                pdf_bytes = pdf.output(dest='S').encode('latin-1')
+                st.download_button("📄 Download PDF Quote", pdf_bytes, "Quote.pdf", "application/pdf", use_container_width=True)
+            except Exception as e:
+                st.error("PDF Error: Please check requirements.txt")
             
-            st.download_button(
-                label="📄 Download PDF Quote",
-                data=pdf_output,
-                file_name="Technodel_Quote.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
-            
-        with col_wa:
-            # WHATSAPP ORDER
-            wa_text = f"Hello Technodel! I want to order this build:\n\n{summary_txt}\nTOTAL: ${total:,}"
-            wa_url = f"https://wa.me/9613659872?text={urllib.parse.quote(wa_text)}"
+        with c2:
+            wa_url = f"https://wa.me/9613659872?text={urllib.parse.quote('Order Build:\n' + summary_txt + 'Total: $' + str(total))}"
             st.link_button("🟢 Order via WhatsApp", wa_url, use_container_width=True)
