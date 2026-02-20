@@ -7,34 +7,123 @@ import re
 import streamlit as st
 from fpdf import FPDF
 import urllib.parse
+import streamlit as st
+from streamlit_gsheets import GSheetsConnection
+from fpdf import FPDF
+import urllib.parse
+import pandas as pd
 
-# --- 1. RESET LOGIC ---
+# --- PAGE CONFIG ---
+st.set_page_config(page_title="Technodel PC Builder", page_icon="🖥️", layout="wide")
+
+# --- 1. GOOGLE SHEETS CONNECTION ---
+# This connects to the sheet managed by your Sync Bot [cite: 2026-02-19]
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+def get_data():
+    # Fetching the 'HARDWARE' tab which contains our synced prices [cite: 2026-02-19]
+    return conn.read(worksheet="HARDWARE", ttl="5m")
+
+try:
+    df = get_data()
+except Exception as e:
+    st.error(f"Could not connect to Google Sheets: {e}")
+    st.stop()
+
+# --- 2. HELPERS: RESET, PDF, & WHATSAPP ---
 def reset_build():
+    """Clears all selections and restarts the app"""
     for key in st.session_state.keys():
         del st.session_state[key]
     st.rerun()
 
-# --- 2. PDF GENERATOR ---
-def generate_pdf(build_text):
+def generate_pdf(build_details, total_price):
+    """Generates a professional PDF file"""
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt="Technodel PC Build Summary", ln=True, align='C')
-    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt="TECHNODEL CUSTOM PC QUOTE", ln=True, align='C')
     pdf.ln(10)
-    # Add build details
-    for line in build_text.split('\n'):
-        pdf.cell(200, 10, txt=line, ln=True, align='L')
+    
+    pdf.set_font("Arial", size=12)
+    for item in build_details:
+        pdf.cell(0, 10, txt=item, ln=True)
+    
+    pdf.ln(5)
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, txt=f"TOTAL PRICE: {total_price}", ln=True)
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 3. WHATSAPP MESSAGE GENERATOR ---
-def send_whatsapp(build_text):
-    phone_number = "9613659872"
-    # Encode the text so spaces and $ signs work in the URL
-    encoded_text = urllib.parse.quote(f"Hello Technodel! I would like to order this build:\n\n{build_text}")
-    wa_url = f"https://wa.me/{phone_number}?text={encoded_text}"
-    return wa_url
+def get_whatsapp_link(build_text):
+    """Creates the link to your number +9613659872"""
+    phone = "9613659872"
+    msg = urllib.parse.quote(f"Hello Technodel! I'd like to order this PC build:\n\n{build_text}")
+    return f"https://wa.me/{phone}?text={msg}"
 
+# --- 3. THE BUILDER INTERFACE ---
+st.title("🖥️ Technodel PC Builder")
+st.write("Select your hardware components to generate a quote.")
+
+# Define categories based on your Excel structure
+categories = ["CPU", "MOTHERBOARD", "GPU", "RAM", "STORAGE", "CASE", "POWER SUPPLY"]
+selected_parts = []
+total_sum = 0
+
+# Create the selection UI
+for cat in categories:
+    # Look for the category name in Column A (index 0)
+    cat_df = df[df.iloc[:, 0].str.contains(cat, case=False, na=False)]
+    
+    # Column B (index 1) is Name, Column E (index 4) is Price
+    options = cat_df.iloc[:, 1].tolist()
+    
+    selected = st.selectbox(f"Select {cat}:", ["None"] + options, key=f"select_{cat}")
+    
+    if selected != "None":
+        # Find the price for the selected part
+        row = cat_df[cat_df.iloc[:, 1] == selected]
+        price_display = row.iloc[0, 4] # The $XX value from the Sync Bot
+        
+        selected_parts.append(f"{cat}: {selected} — {price_display}")
+        
+        # Calculate total by stripping the $ sign
+        try:
+            val_numeric = float(str(price_display).replace('$', '').replace(',', ''))
+            total_sum += val_numeric
+        except:
+            pass
+
+# --- 4. SUMMARY & ACTIONS ---
+st.divider()
+if selected_parts:
+    st.subheader("📋 Your Build Summary")
+    build_summary_text = "\n".join(selected_parts)
+    st.text(build_summary_text)
+    
+    total_display = f"${int(total_sum)}"
+    st.markdown(f"## Total Estimate: {total_display}")
+
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("🔄 Reset Build", use_container_width=True):
+            reset_build()
+
+    with col2:
+        pdf_bytes = generate_pdf(selected_parts, total_display)
+        st.download_button(
+            label="📄 Download PDF Quote",
+            data=pdf_bytes,
+            file_name="Technodel_PC_Quote.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+
+    with col3:
+        wa_url = get_whatsapp_link(f"{build_summary_text}\n\nTotal: {total_display}")
+        st.link_button("🟢 Place Order via WhatsApp", wa_url, use_container_width=True)
+else:
+    st.info("Choose a component from the dropdowns above to begin your build.")
 # --- UI IMPLEMENTATION ---
 st.title("🖥️ Technodel PC Builder")
 
@@ -249,5 +338,6 @@ if not raw_df.empty:
         col_dl, col_share = st.columns([1,1])
         with col_dl:
             st.download_button("💾 Download PDF (Text)", summary_txt + f"\nTOTAL: ${total:,}", file_name="Quotation.txt")
+
 
 
