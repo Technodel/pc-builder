@@ -5,39 +5,39 @@ import urllib.parse
 # --- 1. UI SETTINGS ---
 st.set_page_config(page_title="Technodel PC Builder 🖥️", layout="wide")
 
-# --- 2. THE DATA SOURCE (GOOGLE SHEETS) ---
+# --- 2. THE STURDY SOURCE ---
 def get_data():
     try:
-        # This is your specific Sheet ID from the link you provided
-        SHEET_ID = "1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4"
+        # Your clean Sheet ID
+        sheet_id = "1GI3z-7FJqSHgV-Wy7lzvq3aTg4ovKa4T0ytMj9BJld4"
         
-        # We force Google to export the 'hardware' tab as a CSV
-        # This is the most stable way to replace a local Excel file
-        URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&sheet=hardware"
+        # We use the direct export link to target the 'hardware' tab
+        # This replaces the local Excel file logic perfectly
+        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&sheet=hardware"
         
-        df = pd.read_csv(URL)
+        df = pd.read_csv(url)
         
-        # Yesterday's Logic: Skip the first 2 rows to start at Row 4 [2026-02-16]
+        # Original Logic: Start from Row 4 (skipping first 2 junk rows)
         df = df.iloc[2:].copy()
         
-        # Clean up: Only keep rows where Column B (Name) and Column C (Price) are not empty
+        # Filter for rows that have a Name (Column B) and Price (Column C)
         df = df.dropna(subset=[df.columns[1], df.columns[2]]) 
         return df
     except Exception as e:
-        st.error(f"⚠️ Sheet Connection Error: {e}")
+        st.error(f"❌ Connection Error: {e}")
         return None
 
-# --- 3. MAIN INTERFACE ---
+# --- 3. MAIN UI ---
 st.image("https://technodel.net/wp-content/uploads/2024/08/technodel-site-logo-01.webp", width=150)
 st.title("Technodel PC Builder")
 
 df = get_data()
 
 if df is not None:
-    # URL Parameters for the "Share Build" feature [2026-02-19]
+    # URL Parameters for sharing links with customers
     params = st.query_params
     
-    # Categories based on your 'hardware' sheet structure
+    # Categories exactly as they appear in your Category column (Col A)
     categories = ["CPU", "GPU", "RAM", "Motherboard", "Storage", "PSU", "Case"]
     build = {}
     total_price = 0
@@ -46,21 +46,21 @@ if df is not None:
     
     for i, cat in enumerate(categories):
         with cols[i % 3]:
-            # Filter Column A (Index 0) for the category name
+            # Search Column A for the specific category
             cat_df = df[df.iloc[:, 0].str.contains(cat, case=False, na=False)]
             
             options = []
             for _, row in cat_df.iterrows():
                 try:
                     name = str(row.iloc[1])
-                    # Clean price formatting ($ and ,) [2026-02-16]
+                    # Clean currency formatting
                     price_str = str(row.iloc[2]).replace('$', '').replace(',', '').strip()
                     price = int(round(float(price_str), 0))
                     options.append({"name": name, "price": price})
                 except: continue
             
             if options:
-                # Share Build auto-selection logic
+                # Set default from URL if customer clicked a shared link
                 default_idx = 0
                 if cat in params:
                     for idx, opt in enumerate(options):
@@ -72,16 +72,13 @@ if df is not None:
                 build[cat] = sel
                 total_price += sel['price']
             else:
-                st.warning(f"Category '{cat}' not found in the sheet.")
+                st.warning(f"Category '{cat}' not found in hardware sheet.")
 
     st.divider()
     st.header(f"Total Price: ${total_price}")
 
-    # --- 4. SHARE LINK GENERATION ---
-    # Generates a link that automatically pre-fills the build for a customer
+    # --- 4. SHARE LINK ---
     base_url = "https://technodel-builder.streamlit.app/?"
     query_string = urllib.parse.urlencode({k: v['name'] for k, v in build.items()})
-    
     st.subheader("🔗 Share Build Link")
-    st.info("Copy this link to send to your customer:")
     st.code(base_url + query_string)
