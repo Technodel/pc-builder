@@ -4,13 +4,46 @@ import requests
 from io import BytesIO
 import re
 
-# --- 1. CONFIG & BRANDING ---
+# --- 1. CONFIG & PREMIUM STYLING ---
 st.set_page_config(page_title="Technodel PC Builder", layout="wide")
 
 st.markdown("""
     <style>
-    .build-box { border: 2px solid #00a8e8; padding: 20px; border-radius: 10px; background-color: #f9f9f9; color: #333; }
-    .stButton>button { background-color: #00a8e8; color: white; width: 100%; }
+    /* Premium Summary Box */
+    .build-box { 
+        border: 1px solid rgba(0, 168, 232, 0.3); 
+        padding: 25px; 
+        border-radius: 15px; 
+        background: linear-gradient(135deg, #ffffff 0%, #f0f8ff 100%);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        color: #1a1a1a;
+    }
+    .build-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #eee;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .total-row {
+        margin-top: 15px;
+        font-size: 24px;
+        font-weight: bold;
+        color: #00a8e8;
+        text-align: right;
+    }
+    /* Sidebar Socials */
+    .social-link {
+        display: block;
+        padding: 10px;
+        margin: 5px 0;
+        text-decoration: none;
+        color: #333;
+        border-radius: 5px;
+        background: #f1f1f1;
+        transition: 0.3s;
+    }
+    .social-link:hover { background: #00a8e8; color: white; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -46,7 +79,6 @@ def get_items_from_col(df, col_idx, start_title, stop_at_next_header=True, exclu
     data = []
     found = False
     headers = ["PROCESSORS", "CPU COOLERS", "CASES", "MOTHER BOARDS", "INTERNAL STORAGE", "RAMS", "DDR3", "DDR4", "DDR5", "POWER SUPPLIES", "GRAPHICS CARDS", "UPS"]
-    
     for i in range(len(df)):
         cell_val = str(df.iloc[i, col_idx]).strip().upper()
         if not found:
@@ -56,10 +88,7 @@ def get_items_from_col(df, col_idx, start_title, stop_at_next_header=True, exclu
             if stop_at_next_header and cell_val in headers: break
             name = str(df.iloc[i, col_idx]).strip()
             if not name or name.lower() == "nan": continue
-            
-            # Filter out laptop RAM
             if exclude_laptop and "LAPTOP" in name.upper(): continue
-                
             try:
                 price_raw = str(df.iloc[i, col_idx + 1]).replace('$','').replace(',','').strip()
                 if price_raw and price_raw.lower() != "nan":
@@ -73,9 +102,16 @@ raw_df = load_all_data()
 if not raw_df.empty:
     with st.sidebar:
         st.image("https://technodel.net/wp-content/uploads/2024/08/technodel-site-logo-01.webp", width=200)
-        st.subheader("Contact Technodel")
+        st.subheader("Connect with us")
+        # Social Media Links
+        st.markdown("""
+            <a href="https://instagram.com/technodel" class="social-link">📸 Instagram</a>
+            <a href="https://facebook.com/technodel" class="social-link">📘 Facebook</a>
+            <a href="https://tiktok.com/@technodel" class="social-link">🎵 TikTok</a>
+            <a href="https://wa.me/96170449900" class="social-link">💬 WhatsApp</a>
+        """, unsafe_allow_html=True)
+        st.divider()
         st.write("📞 03 659872 | 70 449900")
-        st.write("📞 71 234002 | 07 345689")
         st.info("🛡️ 1 Year Hardware Warranty\n\n🚀 Ready in 24h")
 
     # Data Pulling
@@ -87,14 +123,13 @@ if not raw_df.empty:
     psu_df = get_items_from_col(raw_df, 9, 'POWER SUPPLIES')
     gpu_df = get_items_from_col(raw_df, 9, 'GRAPHICS CARDS')
 
-    st.title("PC Builder Online")
+    st.title("Technodel PC Builder Pro")
 
     col1, col2 = st.columns(2)
     with col1:
         cpu_c = st.selectbox("Processor", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in cpu_df.iterrows()], key="c")
         mb_l = mb_df[mb_df['ITEM'].apply(lambda x: is_compat(cpu_c, x))] if "Select" not in cpu_c else mb_df
         mb_c = st.selectbox("Motherboard", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in mb_l.iterrows()], key="m")
-        
         if "Select" not in mb_c:
             tech = "DDR5" if "DDR5" in mb_c.upper() else "DDR3" if "DDR3" in mb_c.upper() else "DDR4"
             ram_df = get_items_from_col(raw_df, 6, tech, exclude_laptop=True)
@@ -108,34 +143,49 @@ if not raw_df.empty:
         psu_c = st.selectbox("PSU", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in psu_df.iterrows()], key="p")
         cas_c = st.selectbox("Case", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in cas_df.iterrows()], key="ca")
         coo_c = st.selectbox("Cooler", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in coo_df.iterrows()], key="co")
-        
         if 's_cnt' not in st.session_state: st.session_state.s_cnt = 1
         for i in range(st.session_state.s_cnt):
             st.selectbox(f"Storage {i+1}", ["Select"] + [f"{r['ITEM']} - ${r['PRICE']}" for _,r in st_df.iterrows()], key=f"s_{i}")
         if st.button("➕ Storage"): st.session_state.s_cnt += 1; st.rerun()
 
-    # --- 5. SUMMARY & DOWNLOAD ---
+    # --- 5. ENHANCED PREVIEW ---
     st.divider()
     total = 0
-    build_list = []
+    html_rows = ""
+    summary_txt = "TECHNODEL PC QUOTATION\n" + "="*30 + "\n"
     
-    for k, label in [('c', 'CPU'), ('m', 'MB'), ('g', 'GPU'), ('p', 'PSU'), ('ca', 'Case'), ('co', 'Cooling')]:
+    parts = [('c', 'CPU'), ('m', 'Motherboard'), ('g', 'GPU'), ('p', 'PSU'), ('ca', 'Case'), ('co', 'Cooler')]
+    for k, label in parts:
         val = st.session_state.get(k)
         if val and "Select" not in val:
-            total += int(val.split(" - $")[1].replace(",", ""))
-            build_list.append(f"**{label}:** {val}")
+            item_name, item_price = val.split(" - $")
+            total += int(item_price.replace(",", ""))
+            html_rows += f'<div class="build-item"><span>{label}: {item_name}</span><b>${item_price}</b></div>'
+            summary_txt += f"{label}: {val}\n"
 
+    # Dynamic items
     for i in range(st.session_state.get('r_cnt', 1)):
         v = st.session_state.get(f"r_{i}")
         if v and "Select" not in v:
-            total += int(v.split(" - $")[1].replace(",", "")); build_list.append(f"**RAM:** {v}")
+            name, price = v.split(" - $")
+            total += int(price.replace(",", "")); summary_txt += f"RAM: {v}\n"
+            html_rows += f'<div class="build-item"><span>RAM {i+1}: {name}</span><b>${price}</b></div>'
     for i in range(st.session_state.get('s_cnt', 1)):
         v = st.session_state.get(f"s_{i}")
         if v and "Select" not in v:
-            total += int(v.split(" - $")[1].replace(",", "")); build_list.append(f"**Storage:** {v}")
+            name, price = v.split(" - $")
+            total += int(price.replace(",", "")); summary_txt += f"Storage: {v}\n"
+            html_rows += f'<div class="build-item"><span>Storage {i+1}: {name}</span><b>${price}</b></div>'
 
-    if build_list:
-        st.subheader("🛒 Build Summary")
-        summary_txt = "TECHNODEL PC BUILD\n" + "-"*20 + "\n" + "\n".join(build_list).replace("**", "") + f"\n\nTOTAL: ${total:,}"
-        st.markdown(f'<div class="build-box">{"<br>".join(build_list)}<hr><h3>TOTAL: ${total:,}</h3></div>', unsafe_allow_html=True)
-        st.download_button("💾 Download Build", summary_txt, file_name="Technodel_Build.txt")
+    if total > 0:
+        st.subheader("🖥️ Your Quotation")
+        st.markdown(f"""
+            <div class="build-box">
+                {html_rows}
+                <div class="total-row">Total: ${total:,}</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        col_dl, col_share = st.columns([1,1])
+        with col_dl:
+            st.download_button("💾 Download PDF (Text)", summary_txt + f"\nTOTAL: ${total:,}", file_name="Quotation.txt")
