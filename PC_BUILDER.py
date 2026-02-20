@@ -3,8 +3,6 @@ import pandas as pd
 import requests
 from io import BytesIO
 import re
-from fpdf import FPDF
-import urllib.parse
 
 # --- 1. CONFIG & PREMIUM STYLING ---
 st.set_page_config(page_title="Technodel PC Builder", layout="wide")
@@ -66,28 +64,6 @@ def is_compat(cpu_sel, mb_name):
         return str(gen) in allowed
     return True
 
-# --- NEW FEATURE: RESET LOGIC ---
-def reset_build():
-    for key in st.session_state.keys():
-        del st.session_state[key]
-    st.rerun()
-
-# --- NEW FEATURE: PDF GENERATOR ---
-def generate_real_pdf(summary_text, total_val):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt="TECHNODEL PC QUOTATION", ln=True, align='C')
-    pdf.ln(10)
-    pdf.set_font("Arial", size=12)
-    for line in summary_text.split('\n'):
-        if line.strip():
-            pdf.cell(0, 10, txt=line, ln=True)
-    pdf.ln(5)
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, txt=f"TOTAL: ${total_val:,}", ln=True)
-    return pdf.output(dest='S').encode('latin-1')
-
 # --- 3. DATA ENGINE ---
 @st.cache_data(ttl=300)
 def load_all_data():
@@ -127,16 +103,13 @@ if not raw_df.empty:
     with st.sidebar:
         st.image("https://technodel.net/wp-content/uploads/2024/08/technodel-site-logo-01.webp", width=200)
         st.subheader("Connect with us")
+        # Social Media Links
         st.markdown("""
             <a href="https://instagram.com/technodel" class="social-link">📸 Instagram</a>
             <a href="https://facebook.com/technodel" class="social-link">📘 Facebook</a>
             <a href="https://tiktok.com/@technodel" class="social-link">🎵 TikTok</a>
-            <a href="https://wa.me/96170449900" class="social-link">💬 WhatsApp Admin</a>
+            <a href="https://wa.me/96170449900" class="social-link">💬 WhatsApp</a>
         """, unsafe_allow_html=True)
-        st.divider()
-        # --- NEW FEATURE: RESET BUTTON IN SIDEBAR ---
-        if st.button("🔄 Reset Build", on_click=reset_build, use_container_width=True):
-            pass
         st.divider()
         st.write("📞 03 659872 | 70 449900")
         st.info("🛡️ 1 Year Hardware Warranty\n\n🚀 Ready in 24h")
@@ -179,7 +152,7 @@ if not raw_df.empty:
     st.divider()
     total = 0
     html_rows = ""
-    summary_txt = "" 
+    summary_txt = "TECHNODEL PC QUOTATION\n" + "="*30 + "\n"
     
     parts = [('c', 'CPU'), ('m', 'Motherboard'), ('g', 'GPU'), ('p', 'PSU'), ('ca', 'Case'), ('co', 'Cooler')]
     for k, label in parts:
@@ -188,20 +161,20 @@ if not raw_df.empty:
             item_name, item_price = val.split(" - $")
             total += int(item_price.replace(",", ""))
             html_rows += f'<div class="build-item"><span>{label}: {item_name}</span><b>${item_price}</b></div>'
-            summary_txt += f"{label}: {item_name} (${item_price})\n"
+            summary_txt += f"{label}: {val}\n"
 
     # Dynamic items
     for i in range(st.session_state.get('r_cnt', 1)):
         v = st.session_state.get(f"r_{i}")
         if v and "Select" not in v:
             name, price = v.split(" - $")
-            total += int(price.replace(",", "")); summary_txt += f"RAM: {name} (${price})\n"
+            total += int(price.replace(",", "")); summary_txt += f"RAM: {v}\n"
             html_rows += f'<div class="build-item"><span>RAM {i+1}: {name}</span><b>${price}</b></div>'
     for i in range(st.session_state.get('s_cnt', 1)):
         v = st.session_state.get(f"s_{i}")
         if v and "Select" not in v:
             name, price = v.split(" - $")
-            total += int(price.replace(",", "")); summary_txt += f"Storage: {name} (${price})\n"
+            total += int(price.replace(",", "")); summary_txt += f"Storage: {v}\n"
             html_rows += f'<div class="build-item"><span>Storage {i+1}: {name}</span><b>${price}</b></div>'
 
     if total > 0:
@@ -213,21 +186,8 @@ if not raw_df.empty:
             </div>
         """, unsafe_allow_html=True)
         
-        # --- NEW FEATURE: ACTION BUTTONS ---
-        st.write(" ")
-        col_pdf, col_wa = st.columns(2)
-        
-        with col_pdf:
-            pdf_bytes = generate_real_pdf(summary_txt, total)
-            st.download_button(
-                label="📄 Download PDF Quotation",
-                data=pdf_bytes,
-                file_name="Technodel_Quote.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
-            
-        with col_wa:
-            wa_full_msg = f"Hello Technodel! I'd like to order this build:\n\n{summary_txt}\nTOTAL: ${total:,}"
-            wa_url = f"https://wa.me/9613659872?text={urllib.parse.quote(wa_full_msg)}"
-            st.link_button("🟢 Order via WhatsApp", wa_url, use_container_width=True)
+        col_dl, col_share = st.columns([1,1])
+        with col_dl:
+            st.download_button("💾 Download PDF (Text)", summary_txt + f"\nTOTAL: ${total:,}", file_name="Quotation.txt")
+
+
